@@ -1,12 +1,17 @@
 package com.visionchat.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visionchat.config.TtsConfig;
+import okhttp3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.util.Base64;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 语音合成服务
@@ -17,9 +22,17 @@ public class TtsService {
 
     private static final Logger logger = LoggerFactory.getLogger(TtsService.class);
     private final TtsConfig config;
+    private final OkHttpClient httpClient;
+    private final ObjectMapper objectMapper;
 
     public TtsService(TtsConfig config) {
         this.config = config;
+        this.httpClient = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .build();
+        this.objectMapper = new ObjectMapper();
     }
 
     /**
@@ -83,30 +96,74 @@ public class TtsService {
      * 调用TTS API
      */
     private String callTtsAPI(String text) {
-        // TODO: 实现实际的API调用
-        // 这里使用模拟响应
-
-        logger.debug("调用TTS API, 发音人: {}", config.getVoice());
-
-        // 模拟API延迟
         try {
-            Thread.sleep(500);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+            logger.debug("调用TTS API, 发音人: {}", config.getVoice());
 
-        // 返回模拟的音频数据
-        return mockSynthesize(text);
+            // 构建请求JSON
+            String requestJson = objectMapper.writeValueAsString(new TtsRequest(text));
+
+            // 构建HTTP请求
+            Request request = new Request.Builder()
+                    .url(config.getEndpoint() + "/rest/v1/tts")
+                    .post(RequestBody.create(requestJson, MediaType.parse("application/json")))
+                    .addHeader("Authorization", "Bearer " + config.getApiKey())
+                    .addHeader("Content-Type", "application/json")
+                    .build();
+
+            // 发送请求
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    logger.error("TTS API请求失败: {}", response.code());
+                    return null;
+                }
+
+                String responseBody = response.body().string();
+                JsonNode jsonResponse = objectMapper.readTree(responseBody);
+
+                // 检查响应状态
+                if (jsonResponse.has("error_code")) {
+                    logger.error("TTS API错误: {}", jsonResponse.get("error_message").asText());
+                    return null;
+                }
+
+                // 获取音频数据
+                if (jsonResponse.has("audio")) {
+                    String audioBase64 = jsonResponse.get("audio").asText();
+                    logger.info("TTS合成成功, 音频大小: {} bytes", audioBase64.length());
+                    return audioBase64;
+                }
+
+                logger.error("TTS API响应格式错误");
+                return null;
+            }
+
+        } catch (IOException e) {
+            logger.error("TTS API调用失败", e);
+            return null;
+        }
     }
 
     /**
-     * 模拟语音合成（开发测试用）
+     * TTS请求对象
      */
-    private String mockSynthesize(String text) {
-        // 生成模拟的音频数据（实际应该是真实的音频）
-        // 这里返回一个简短的Base64编码的"音频"数据
-        byte[] mockAudio = new byte[text.length() * 10]; // 模拟音频大小
-        return Base64.getEncoder().encodeToString(mockAudio);
+    private static class TtsRequest {
+        public final String text;
+        public final String voice;
+        public final int speed;
+        public final int volume;
+        public final int pitch;
+        public final String format;
+        public final int sample_rate;
+
+        public TtsRequest(String text) {
+            this.text = text;
+            this.voice = "xiaoyun";
+            this.speed = 50;
+            this.volume = 50;
+            this.pitch = 50;
+            this.format = "mp3";
+            this.sample_rate = 16000;
+        }
     }
 
     /**
