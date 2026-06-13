@@ -341,30 +341,6 @@ function updateVolumeIndicator(volume, isActive) {
 }
 
 /**
- * 发送消息
- */
-function sendMessage() {
-    const message = messageInput.value.trim();
-
-    if (!message) {
-        showToast('请输入消息', 'error');
-        return;
-    }
-
-    // 添加用户消息到对话
-    addMessage('user', message);
-
-    // 清空输入框
-    messageInput.value = '';
-
-    // TODO: 发送到后端获取AI回复
-    // 模拟AI回复
-    setTimeout(() => {
-        addMessage('ai', '收到你的消息："' + message + '"。AI功能正在开发中...');
-    }, 500);
-}
-
-/**
  * 处理回车键
  */
 function handleKeyPress(event) {
