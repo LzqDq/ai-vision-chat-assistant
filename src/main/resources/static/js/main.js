@@ -7,6 +7,9 @@ let videoStream = null;
 let audioProcessor = null;
 let isRecording = false;
 let vadTimer = null;
+let ws = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 // DOM元素
 const videoElement = document.getElementById('videoElement');
@@ -43,6 +46,9 @@ async function init() {
 
     // 检查浏览器支持
     checkBrowserSupport();
+
+    // 建立WebSocket连接
+    connectWebSocket();
 }
 
 /**
@@ -153,16 +159,18 @@ function captureFrame() {
     const ctx = canvasElement.getContext('2d');
     ctx.drawImage(videoElement, 0, 0);
 
-    // 获取图片数据
+    // 获取图片数据（压缩质量60%）
     const imageData = canvasElement.toDataURL('image/jpeg', 0.6);
 
     // 添加到对话
     addMessage('user', '📸 已拍照，请识别图片内容');
 
-    // TODO: 发送到后端进行AI识别
+    // 发送到服务器
+    sendImageMessage(imageData);
+
     console.log('捕获帧大小:', Math.round(imageData.length / 1024), 'KB');
 
-    showToast('图片已捕获', 'success');
+    showToast('图片已发送', 'success');
 }
 
 /**
@@ -198,11 +206,8 @@ async function startRecording() {
                 // 添加到对话
                 addMessage('user', '🎤 已录音，正在识别...');
 
-                // TODO: 发送到后端进行语音识别
-                // 模拟识别结果
-                setTimeout(() => {
-                    addMessage('ai', '语音识别功能正在开发中...');
-                }, 1000);
+                // 发送到服务器
+                sendAudioMessage(base64);
             }
         );
 
@@ -384,10 +389,185 @@ function updateConnectionStatus(status) {
     if (status === '已连接') {
         connectionStatus.classList.add('active');
         connectionStatus.classList.remove('inactive');
+        messageInput.disabled = false;
+        sendBtn.disabled = false;
+        startRecordBtn.disabled = false;
     } else {
         connectionStatus.classList.remove('active');
         connectionStatus.classList.add('inactive');
+        messageInput.disabled = true;
+        sendBtn.disabled = true;
+        startRecordBtn.disabled = true;
     }
+}
+
+/**
+ * 建立WebSocket连接
+ */
+function connectWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/chat`;
+
+    console.log('正在连接WebSocket:', wsUrl);
+    updateConnectionStatus('连接中...');
+
+    ws = new WebSocket(wsUrl);
+
+    // 连接建立
+    ws.onopen = () => {
+        console.log('WebSocket连接已建立');
+        updateConnectionStatus('已连接');
+        reconnectAttempts = 0;
+
+        // 启动心跳
+        startHeartbeat();
+    };
+
+    // 收到消息
+    ws.onmessage = (event) => {
+        try {
+            const message = JSON.parse(event.data);
+            handleWebSocketMessage(message);
+        } catch (e) {
+            console.error('解析消息失败:', e);
+        }
+    };
+
+    // 连接关闭
+    ws.onclose = (event) => {
+        console.log('WebSocket连接已关闭:', event.code, event.reason);
+        updateConnectionStatus('已断开');
+
+        // 尝试重连
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttempts++;
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+            console.log(`${delay / 1000}秒后尝试重连 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+            setTimeout(connectWebSocket, delay);
+        } else {
+            showToast('连接已断开，请刷新页面重试', 'error');
+        }
+    };
+
+    // 连接错误
+    ws.onerror = (error) => {
+        console.error('WebSocket错误:', error);
+        updateConnectionStatus('连接错误');
+    };
+}
+
+/**
+ * 处理WebSocket消息
+ */
+function handleWebSocketMessage(message) {
+    console.log('收到消息:', message);
+
+    switch (message.type) {
+        case 'TEXT':
+            addMessage('ai', message.content);
+            break;
+        case 'SYSTEM':
+            addMessage('system', message.content);
+            break;
+        case 'ERROR':
+            addMessage('system', '❌ ' + message.errorMessage);
+            showToast(message.errorMessage, 'error');
+            break;
+        case 'PONG':
+            // 心跳响应，不做处理
+            break;
+        default:
+            console.log('未知消息类型:', message.type);
+    }
+}
+
+/**
+ * 发送WebSocket消息
+ */
+function sendWebSocketMessage(message) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(message));
+        return true;
+    } else {
+        showToast('连接已断开，无法发送消息', 'error');
+        return false;
+    }
+}
+
+/**
+ * 启动心跳
+ */
+let heartbeatTimer = null;
+
+function startHeartbeat() {
+    stopHeartbeat();
+    heartbeatTimer = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            sendWebSocketMessage({ type: 'PING' });
+        }
+    }, 30000); // 每30秒发送一次心跳
+}
+
+/**
+ * 停止心跳
+ */
+function stopHeartbeat() {
+    if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+    }
+}
+
+/**
+ * 发送文本消息
+ */
+function sendMessage() {
+    const content = messageInput.value.trim();
+
+    if (!content) {
+        showToast('请输入消息', 'error');
+        return;
+    }
+
+    // 添加到对话区域
+    addMessage('user', content);
+
+    // 发送到服务器
+    const message = {
+        type: 'TEXT',
+        content: content,
+        sender: 'user'
+    };
+
+    if (sendWebSocketMessage(message)) {
+        messageInput.value = '';
+    }
+}
+
+/**
+ * 发送图片消息
+ */
+function sendImageMessage(imageData) {
+    const message = {
+        type: 'IMAGE',
+        imageData: imageData,
+        sender: 'user'
+    };
+
+    sendWebSocketMessage(message);
+}
+
+/**
+ * 发送音频消息
+ */
+function sendAudioMessage(audioData) {
+    const message = {
+        type: 'AUDIO',
+        audioData: audioData,
+        sender: 'user'
+    };
+
+    sendWebSocketMessage(message);
 }
 
 // 导出函数供其他模块使用
@@ -398,7 +578,10 @@ window.VisionChat = {
     startRecording,
     stopRecording,
     sendMessage,
+    sendImageMessage,
+    sendAudioMessage,
     addMessage,
     showToast,
-    updateConnectionStatus
+    updateConnectionStatus,
+    connectWebSocket
 };
