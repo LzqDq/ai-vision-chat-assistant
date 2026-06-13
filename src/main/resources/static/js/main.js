@@ -362,7 +362,15 @@ function addMessage(type, content) {
     contentDiv.className = 'message-content';
     contentDiv.textContent = content;
 
+    const timeDiv = document.createElement('div');
+    timeDiv.className = 'message-time';
+    timeDiv.textContent = new Date().toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+
     messageDiv.appendChild(contentDiv);
+    messageDiv.appendChild(timeDiv);
     chatContainer.appendChild(messageDiv);
 
     // 滚动到底部
