@@ -2,6 +2,7 @@ package com.visionchat.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visionchat.model.ChatMessage;
+import com.visionchat.optimizer.CostOptimizer;
 import com.visionchat.service.AsrService;
 import com.visionchat.service.ChatService;
 import com.visionchat.service.TtsService;
@@ -30,16 +31,19 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final AsrService asrService;
     private final VisionService visionService;
     private final TtsService ttsService;
+    private final CostOptimizer costOptimizer;
 
     // 存储所有活跃的WebSocket会话
     private final ConcurrentHashMap<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
 
     public ChatWebSocketHandler(ChatService chatService, AsrService asrService,
-                                VisionService visionService, TtsService ttsService) {
+                                VisionService visionService, TtsService ttsService,
+                                CostOptimizer costOptimizer) {
         this.chatService = chatService;
         this.asrService = asrService;
         this.visionService = visionService;
         this.ttsService = ttsService;
+        this.costOptimizer = costOptimizer;
     }
 
     @Override
@@ -55,7 +59,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 "1. 📸 分析摄像头拍摄的图片\n" +
                 "2. 🎤 识别你的语音\n" +
                 "3. 💬 进行智能对话\n" +
-                "4. 🔊 语音回复"
+                "4. 🔊 语音回复\n\n" +
+                "💡 已启用成本优化：帧采样、VAD检测"
         );
         sendMessage(session, welcomeMessage);
     }
@@ -100,6 +105,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         String sessionId = session.getId();
         sessions.remove(sessionId);
+        costOptimizer.clearCache(sessionId);
         logger.info("WebSocket连接已关闭: {}, 状态: {}", sessionId, status);
     }
 
@@ -178,7 +184,27 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         logger.debug("收到视频帧, 大小: {} bytes",
                 message.getImageData() != null ? message.getImageData().length() : 0);
 
-        // 视频帧处理可以用于上下文理解，但通常不直接回复
+        // 使用成本优化器检查是否应该处理
+        if (!costOptimizer.shouldSendFrame(session.getId(), message.getImageData())) {
+            return;
+        }
+
+        // 压缩图片
+        String compressedImage = costOptimizer.compressImage(message.getImageData());
+
+        // 调用视觉服务分析视频帧
+        if (visionService.isAvailable()) {
+            visionService.analyzeImageAsync(compressedImage, "请简要描述摄像头画面中的内容")
+                    .thenAccept(analysisResult -> {
+                        if (analysisResult != null && !analysisResult.isEmpty()) {
+                            logger.debug("视频帧分析: {}", analysisResult);
+                        }
+                    })
+                    .exceptionally(e -> {
+                        logger.error("视频帧分析异常", e);
+                        return null;
+                    });
+        }
     }
 
     /**
@@ -209,5 +235,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
      */
     public int getActiveSessionCount() {
         return sessions.size();
+    }
+
+    /**
+     * 获取优化统计信息
+     */
+    public CostOptimizer.OptimizationStats getOptimizationStats() {
+        return costOptimizer.getStats();
     }
 }
