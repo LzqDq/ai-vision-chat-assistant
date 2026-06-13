@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI视觉对话助手</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 头部标题 -->
+        <header class="header">
+            <h1>🤖 AI视觉对话助手</h1>
+            <p class="subtitle">让我看到你的世界，听到你的声音</p>
+        </header>
+
+        <!-- 主要内容区域 -->
+        <main class="main-content">
+            <!-- 视频区域 -->
+            <section class="video-section">
+                <div class="video-container">
+                    <video id="videoElement" autoplay playsinline></video>
+                    <canvas id="canvasElement" style="display: none;"></canvas>
+                    <div class="video-overlay" id="videoOverlay">
+                        <span>📹 点击下方按钮开启摄像头</span>
+                    </div>
+                </div>
+                <div class="video-controls">
+                    <button id="startCameraBtn" class="btn btn-primary">
+                        📹 开启摄像头
+                    </button>
+                    <button id="stopCameraBtn" class="btn btn-secondary" disabled>
+                        ⏹️ 关闭摄像头
+                    </button>
+                    <button id="captureBtn" class="btn btn-accent" disabled>
+                        📸 拍照识别
+                    </button>
+                </div>
+            </section>
+
+            <!-- 对话区域 -->
+            <section class="chat-section">
+                <div class="chat-container" id="chatContainer">
+                    <div class="chat-message system-message">
+                        <div class="message-content">
+                            👋 你好！我是AI视觉对话助手。开启摄像头后，我能看到你展示的物品并进行描述。
+                        </div>
+                    </div>
+                </div>
+                <div class="chat-input-area">
+                    <div class="input-group">
+                        <input type="text" id="messageInput" placeholder="输入消息或按住说话..." disabled>
+                        <button id="sendBtn" class="btn btn-primary" disabled>
+                            发送
+                        </button>
+                    </div>
+                    <div class="voice-controls">
+                        <button id="startRecordBtn" class="btn btn-voice" disabled>
+                            🎤 按住说话
+                        </button>
+                        <button id="stopRecordBtn" class="btn btn-voice-stop" disabled>
+                            ⏹️ 停止录音
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 状态栏 -->
+        <footer class="status-bar">
+            <div class="status-item">
+                <span class="status-label">摄像头:</span>
+                <span class="status-value" id="cameraStatus">未开启</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">麦克风:</span>
+                <span class="status-value" id="micStatus">未开启</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">连接:</span>
+                <span class="status-value" id="connectionStatus">未连接</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 提示信息 -->
+    <div class="toast" id="toast"></div>
+
+    <script src="js/audio.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
