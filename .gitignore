@@ -55,3 +55,7 @@ Thumbs.db
 # Spring Boot
 spring-shell.log
 application-local.yml
+
+# Environment variables
+.env
+.env.local
