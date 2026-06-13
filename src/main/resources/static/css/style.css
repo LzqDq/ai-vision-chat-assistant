@@ -263,6 +263,57 @@ body {
     display: flex;
     gap: 10px;
     justify-content: center;
+    margin-bottom: 10px;
+}
+
+/* 音量指示器 */
+.volume-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    transition: background 0.3s ease;
+}
+
+.volume-indicator.active {
+    background: #d4edda;
+    border: 1px solid #28a745;
+}
+
+.volume-bar {
+    flex: 1;
+    height: 20px;
+    background: #e9ecef;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.volume-level {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #28a745, #ffc107, #dc3545);
+    transition: width 0.1s ease;
+    border-radius: 10px;
+}
+
+.volume-text {
+    font-size: 0.9rem;
+    color: #666;
+    min-width: 80px;
+}
+
+/* 录音中按钮样式 */
+.btn-voice.recording {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(238, 90, 36, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(238, 90, 36, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(238, 90, 36, 0); }
 }
 
 /* 状态栏样式 */
