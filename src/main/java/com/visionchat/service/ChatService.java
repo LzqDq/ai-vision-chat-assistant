@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -24,11 +26,13 @@ public class ChatService {
     private final VisionService visionService;
     private final AsrService asrService;
     private final TtsService ttsService;
+    private final ChatAIService chatAIService;
 
-    public ChatService(VisionService visionService, AsrService asrService, TtsService ttsService) {
+    public ChatService(VisionService visionService, AsrService asrService, TtsService ttsService, ChatAIService chatAIService) {
         this.visionService = visionService;
         this.asrService = asrService;
         this.ttsService = ttsService;
+        this.chatAIService = chatAIService;
     }
 
     /**
@@ -180,11 +184,38 @@ public class ChatService {
      */
     private String generateReply(ChatContext context, String userMessage) {
         // 获取对话历史
-        String contextText = context.getContextText();
+        List<ChatMessage> history = context.getHistory();
 
-        // TODO: 调用实际的AI服务生成回复
-        // 这里使用简单的规则生成回复
+        // 构建消息列表
+        List<ChatAIService.ChatMessage> messages = new ArrayList<>();
 
+        // 添加系统提示
+        messages.add(new ChatAIService.ChatMessage("system",
+                "你是AI视觉对话助手，可以帮用户分析图片、识别语音，并进行智能对话。请用中文回复，保持简洁友好。"));
+
+        // 添加历史消息（最多保留最近10条）
+        int start = Math.max(0, history.size() - 10);
+        for (int i = start; i < history.size(); i++) {
+            ChatMessage msg = history.get(i);
+            String role = "user".equals(msg.getSender()) ? "user" : "assistant";
+            messages.add(new ChatAIService.ChatMessage(role, msg.getContent()));
+        }
+
+        // 调用AI服务生成回复
+        String reply = chatAIService.generateReply(messages);
+
+        if (reply != null && !reply.isEmpty()) {
+            return reply;
+        }
+
+        // 如果AI服务不可用，使用简单的规则回复
+        return generateSimpleReply(userMessage);
+    }
+
+    /**
+     * 简单规则回复（备用）
+     */
+    private String generateSimpleReply(String userMessage) {
         String lowerMessage = userMessage.toLowerCase();
 
         if (lowerMessage.contains("你好") || lowerMessage.contains("hello") || lowerMessage.contains("hi")) {
