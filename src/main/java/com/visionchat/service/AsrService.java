@@ -1,12 +1,17 @@
 package com.visionchat.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visionchat.config.AsrConfig;
+import okhttp3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.util.Base64;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 语音识别服务
@@ -17,9 +22,17 @@ public class AsrService {
 
     private static final Logger logger = LoggerFactory.getLogger(AsrService.class);
     private final AsrConfig config;
+    private final OkHttpClient httpClient;
+    private final ObjectMapper objectMapper;
 
     public AsrService(AsrConfig config) {
         this.config = config;
+        this.httpClient = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .build();
+        this.objectMapper = new ObjectMapper();
     }
 
     /**
@@ -46,11 +59,14 @@ public class AsrService {
             byte[] audioBytes = Base64.getDecoder().decode(audioData);
             logger.debug("解码后音频大小: {} bytes", audioBytes.length);
 
-            // TODO: 调用实际的ASR API
-            // 这里模拟识别结果
-            String result = mockRecognize(audioBytes);
+            // 调用ASR API
+            String result = callAsrAPI(audioBytes);
 
-            logger.info("语音识别完成: {}", result);
+            if (result != null) {
+                logger.info("语音识别完成: {}", result);
+            } else {
+                logger.warn("语音识别返回空结果");
+            }
             return result;
 
         } catch (Exception e) {
@@ -93,24 +109,70 @@ public class AsrService {
     }
 
     /**
-     * 模拟识别（开发测试用）
+     * 调用ASR API
      */
-    private String mockRecognize(byte[] audioBytes) {
-        // 模拟识别延迟
+    private String callAsrAPI(byte[] audioBytes) {
         try {
-            Thread.sleep(500);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+            // 将音频数据编码为Base64
+            String audioBase64 = Base64.getEncoder().encodeToString(audioBytes);
 
-        // 根据音频大小返回不同的模拟结果
-        int size = audioBytes.length;
-        if (size < 1000) {
-            return "你好";
-        } else if (size < 5000) {
-            return "你好，这是一段测试语音";
-        } else {
-            return "你好，这是一段较长的测试语音，用于验证语音识别功能是否正常工作";
+            // 构建请求JSON
+            AsrRequest request = new AsrRequest(audioBase64);
+            String requestJson = objectMapper.writeValueAsString(request);
+
+            // 构建HTTP请求
+            Request httpRequest = new Request.Builder()
+                    .url(config.getEndpoint() + "/rest/v1/asr")
+                    .post(RequestBody.create(requestJson, MediaType.parse("application/json")))
+                    .addHeader("Authorization", "Bearer " + config.getApiKey())
+                    .addHeader("Content-Type", "application/json")
+                    .build();
+
+            // 发送请求
+            try (Response response = httpClient.newCall(httpRequest).execute()) {
+                if (!response.isSuccessful()) {
+                    logger.error("ASR API请求失败: {}", response.code());
+                    return null;
+                }
+
+                String responseBody = response.body().string();
+                JsonNode jsonResponse = objectMapper.readTree(responseBody);
+
+                // 检查响应状态
+                if (jsonResponse.has("error_code")) {
+                    logger.error("ASR API错误: {}", jsonResponse.get("error_message").asText());
+                    return null;
+                }
+
+                // 获取识别结果
+                if (jsonResponse.has("result")) {
+                    String result = jsonResponse.get("result").asText();
+                    logger.info("ASR识别成功: {}", result);
+                    return result;
+                }
+
+                logger.error("ASR API响应格式错误");
+                return null;
+            }
+
+        } catch (IOException e) {
+            logger.error("ASR API调用失败", e);
+            return null;
+        }
+    }
+
+    /**
+     * ASR请求对象
+     */
+    private static class AsrRequest {
+        public final String audio;
+        public final String format;
+        public final int sample_rate;
+
+        public AsrRequest(String audio) {
+            this.audio = audio;
+            this.format = "mp3";
+            this.sample_rate = 16000;
         }
     }
 
