@@ -2,6 +2,7 @@ package com.visionchat.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visionchat.model.ChatMessage;
+import com.visionchat.service.AsrService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -22,9 +23,14 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(ChatWebSocketHandler.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final AsrService asrService;
 
     // 存储所有活跃的WebSocket会话
     private final ConcurrentHashMap<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
+
+    public ChatWebSocketHandler(AsrService asrService) {
+        this.asrService = asrService;
+    }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -132,12 +138,46 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         logger.info("收到音频消息, 大小: {} bytes",
                 message.getAudioData() != null ? message.getAudioData().length() : 0);
 
-        // TODO: 调用ASR服务识别语音
-        ChatMessage reply = ChatMessage.createTextMessage(
-                "已收到语音，正在识别...",
-                "ai"
-        );
-        sendMessage(session, reply);
+        // 调用ASR服务识别语音
+        if (asrService.isAvailable()) {
+            // 异步识别
+            asrService.recognizeAsync(message.getAudioData())
+                    .thenAccept(recognizedText -> {
+                        if (recognizedText != null && !recognizedText.isEmpty()) {
+                            // 发送识别结果
+                            ChatMessage resultMessage = ChatMessage.createTextMessage(
+                                    "🎤 语音识别结果: " + recognizedText,
+                                    "system"
+                            );
+                            sendMessage(session, resultMessage);
+
+                            // TODO: 使用识别的文字调用AI服务生成回复
+                            ChatMessage reply = ChatMessage.createTextMessage(
+                                    "收到你的语音消息: " + recognizedText,
+                                    "ai"
+                            );
+                            sendMessage(session, reply);
+                        } else {
+                            ChatMessage errorMessage = ChatMessage.createErrorMessage("语音识别失败，请重试");
+                            sendMessage(session, errorMessage);
+                        }
+                    })
+                    .exceptionally(e -> {
+                        logger.error("语音识别异常", e);
+                        ChatMessage errorMessage = ChatMessage.createErrorMessage("语音识别服务异常");
+                        sendMessage(session, errorMessage);
+                        return null;
+                    });
+        } else {
+            // ASR服务不可用，使用模拟识别
+            logger.warn("ASR服务不可用，使用模拟识别");
+            ChatMessage reply = ChatMessage.createTextMessage(
+                    "语音识别服务未配置，收到音频数据大小: " +
+                            (message.getAudioData() != null ? message.getAudioData().length() : 0) + " bytes",
+                    "ai"
+            );
+            sendMessage(session, reply);
+        }
     }
 
     /**
