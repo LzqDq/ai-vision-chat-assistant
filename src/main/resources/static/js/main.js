@@ -423,6 +423,8 @@ function updateConnectionStatus(status) {
         messageInput.disabled = false;
         sendBtn.disabled = false;
         startRecordBtn.disabled = false;
+        // 自动聚焦输入框
+        messageInput.focus();
     } else {
         connectionStatus.classList.remove('active');
         connectionStatus.classList.add('inactive');
