@@ -44,11 +44,36 @@ async function init() {
     startRecordBtn.addEventListener('click', toggleRecording);
     stopRecordBtn.addEventListener('click', stopRecording);
 
+    // 绑定模态框事件
+    document.getElementById('helpBtn').addEventListener('click', () => showModal('helpModal'));
+    document.getElementById('settingsBtn').addEventListener('click', () => showModal('settingsModal'));
+    document.getElementById('closeHelpBtn').addEventListener('click', () => hideModal('helpModal'));
+    document.getElementById('closeSettingsBtn').addEventListener('click', () => hideModal('settingsModal'));
+    document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+
+    // 自动捕获按钮
+    document.getElementById('autoCaptureBtn').addEventListener('click', toggleAutoCapture);
+
+    // 设置滑块事件
+    document.getElementById('imageQuality').addEventListener('input', (e) => {
+        document.getElementById('imageQualityValue').textContent = e.target.value + '%';
+    });
+
+    // 点击模态框外部关闭
+    window.addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal')) {
+            e.target.classList.remove('active');
+        }
+    });
+
     // 检查浏览器支持
     checkBrowserSupport();
 
     // 建立WebSocket连接
     connectWebSocket();
+
+    // 加载设置
+    loadSettings();
 }
 
 /**
@@ -600,6 +625,100 @@ function sendAudioMessage(audioData) {
     sendWebSocketMessage(message);
 }
 
+/**
+ * 显示模态框
+ */
+function showModal(modalId) {
+    document.getElementById(modalId).classList.add('active');
+}
+
+/**
+ * 隐藏模态框
+ */
+function hideModal(modalId) {
+    document.getElementById(modalId).classList.remove('active');
+}
+
+/**
+ * 保存设置
+ */
+function saveSettings() {
+    const settings = {
+        videoQuality: document.getElementById('videoQuality').value,
+        imageQuality: document.getElementById('imageQuality').value,
+        frameInterval: document.getElementById('frameInterval').value,
+        enableVAD: document.getElementById('enableVAD').checked,
+        enableAutoCapture: document.getElementById('enableAutoCapture').checked
+    };
+
+    localStorage.setItem('visionChatSettings', JSON.stringify(settings));
+    showToast('设置已保存', 'success');
+    hideModal('settingsModal');
+}
+
+/**
+ * 加载设置
+ */
+function loadSettings() {
+    const saved = localStorage.getItem('visionChatSettings');
+    if (saved) {
+        const settings = JSON.parse(saved);
+        document.getElementById('videoQuality').value = settings.videoQuality || 'medium';
+        document.getElementById('imageQuality').value = settings.imageQuality || 60;
+        document.getElementById('imageQualityValue').textContent = (settings.imageQuality || 60) + '%';
+        document.getElementById('frameInterval').value = settings.frameInterval || 2;
+        document.getElementById('enableVAD').checked = settings.enableVAD !== false;
+        document.getElementById('enableAutoCapture').checked = settings.enableAutoCapture || false;
+    }
+}
+
+/**
+ * 切换自动捕获
+ */
+let autoCaptureInterval = null;
+
+function toggleAutoCapture() {
+    const btn = document.getElementById('autoCaptureBtn');
+
+    if (autoCaptureInterval) {
+        // 停止自动捕获
+        clearInterval(autoCaptureInterval);
+        autoCaptureInterval = null;
+        btn.classList.remove('active');
+        btn.textContent = '🔄 自动捕获';
+        showToast('已停止自动捕获', 'info');
+    } else {
+        // 开始自动捕获
+        if (!videoStream) {
+            showToast('请先开启摄像头', 'error');
+            return;
+        }
+
+        const interval = parseInt(document.getElementById('frameInterval').value) * 1000;
+        autoCaptureInterval = setInterval(captureFrame, interval);
+        btn.classList.add('active');
+        btn.textContent = '⏹️ 停止捕获';
+        showToast('已开始自动捕获，每' + (interval / 1000) + '秒一帧', 'info');
+    }
+}
+
+/**
+ * 更新FPS显示
+ */
+let frameCount = 0;
+let lastFpsTime = Date.now();
+
+function updateFPS() {
+    frameCount++;
+    const now = Date.now();
+    if (now - lastFpsTime >= 1000) {
+        const fps = Math.round(frameCount * 1000 / (now - lastFpsTime));
+        document.getElementById('fpsDisplay').textContent = fps + ' FPS';
+        frameCount = 0;
+        lastFpsTime = now;
+    }
+}
+
 // 导出函数供其他模块使用
 window.VisionChat = {
     startCamera,
@@ -613,5 +732,7 @@ window.VisionChat = {
     addMessage,
     showToast,
     updateConnectionStatus,
-    connectWebSocket
+    connectWebSocket,
+    showModal,
+    hideModal
 };
