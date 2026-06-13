@@ -214,6 +214,11 @@ body {
     color: var(--text-primary);
 }
 
+.chat-actions {
+    display: flex;
+    gap: 8px;
+}
+
 .chat-container {
     flex: 1;
     overflow-y: auto;

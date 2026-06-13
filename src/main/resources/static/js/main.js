@@ -47,6 +47,7 @@ async function init() {
     darkModeBtn.addEventListener('click', toggleDarkMode);
     uploadImageBtn.addEventListener('click', () => imageFileInput.click());
     imageFileInput.addEventListener('change', handleImageUpload);
+    exportChatBtn.addEventListener('click', exportChat);
 
     // 绑定模态框事件
     document.getElementById('helpBtn').addEventListener('click', () => showModal('helpModal'));
@@ -458,6 +459,50 @@ function addMessage(type, content) {
 
     // 滚动到底部
     chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+/**
+ * 导出聊天记录
+ */
+function exportChat() {
+    const messages = chatContainer.querySelectorAll('.chat-message');
+    if (messages.length === 0) {
+        showToast('没有聊天记录可导出', 'error');
+        return;
+    }
+
+    let chatText = 'AI视觉对话助手 - 聊天记录\n';
+    chatText += '导出时间: ' + new Date().toLocaleString() + '\n';
+    chatText += '='.repeat(50) + '\n\n';
+
+    messages.forEach(msg => {
+        const content = msg.querySelector('.message-content');
+        if (!content) return;
+
+        let sender = '未知';
+        if (msg.classList.contains('user-message')) {
+            sender = '用户';
+        } else if (msg.classList.contains('ai-message')) {
+            sender = 'AI';
+        } else if (msg.classList.contains('system-message')) {
+            sender = '系统';
+        }
+
+        chatText += `[${sender}]\n${content.textContent}\n\n`;
+    });
+
+    // 创建下载链接
+    const blob = new Blob([chatText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chat-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast('聊天记录已导出', 'success');
 }
 
 /**
