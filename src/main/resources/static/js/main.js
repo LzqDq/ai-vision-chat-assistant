@@ -465,6 +465,10 @@ function handleWebSocketMessage(message) {
     switch (message.type) {
         case 'TEXT':
             addMessage('ai', message.content);
+            // 如果有音频数据，播放语音
+            if (message.audioData) {
+                playAudio(message.audioData);
+            }
             break;
         case 'SYSTEM':
             addMessage('system', message.content);
@@ -478,6 +482,32 @@ function handleWebSocketMessage(message) {
             break;
         default:
             console.log('未知消息类型:', message.type);
+    }
+}
+
+/**
+ * 播放音频
+ */
+function playAudio(base64Audio) {
+    try {
+        // 创建音频元素
+        const audio = new Audio();
+
+        // 设置音频源
+        audio.src = 'data:audio/mp3;base64,' + base64Audio;
+
+        // 播放音频
+        audio.play().catch(e => {
+            console.error('音频播放失败:', e);
+        });
+
+        // 播放完成后清理
+        audio.onended = () => {
+            audio.remove();
+        };
+
+    } catch (error) {
+        console.error('音频播放错误:', error);
     }
 }
 

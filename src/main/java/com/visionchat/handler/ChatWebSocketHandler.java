@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visionchat.model.ChatMessage;
 import com.visionchat.service.AsrService;
 import com.visionchat.service.ChatService;
+import com.visionchat.service.TtsService;
 import com.visionchat.service.VisionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,14 +29,17 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final ChatService chatService;
     private final AsrService asrService;
     private final VisionService visionService;
+    private final TtsService ttsService;
 
     // 存储所有活跃的WebSocket会话
     private final ConcurrentHashMap<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
 
-    public ChatWebSocketHandler(ChatService chatService, AsrService asrService, VisionService visionService) {
+    public ChatWebSocketHandler(ChatService chatService, AsrService asrService,
+                                VisionService visionService, TtsService ttsService) {
         this.chatService = chatService;
         this.asrService = asrService;
         this.visionService = visionService;
+        this.ttsService = ttsService;
     }
 
     @Override
@@ -50,7 +54,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 "我可以帮你：\n" +
                 "1. 📸 分析摄像头拍摄的图片\n" +
                 "2. 🎤 识别你的语音\n" +
-                "3. 💬 进行智能对话"
+                "3. 💬 进行智能对话\n" +
+                "4. 🔊 语音回复"
         );
         sendMessage(session, welcomeMessage);
     }
@@ -119,8 +124,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private void handleTextMessage(WebSocketSession session, ChatMessage message) {
         logger.info("收到文本消息: {}", message.getContent());
 
-        // 使用ChatService处理消息
-        ChatMessage reply = chatService.processTextMessage(session.getId(), message.getContent());
+        // 使用ChatService处理消息（带语音）
+        ChatMessage reply = chatService.processTextMessageWithVoice(session.getId(), message.getContent());
         sendMessage(session, reply);
     }
 
@@ -133,6 +138,15 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         // 使用ChatService处理图片
         ChatMessage reply = chatService.processImageMessage(session.getId(), message.getImageData());
+
+        // 如果TTS可用，添加语音
+        if (ttsService.isAvailable() && reply.getContent() != null) {
+            String audioData = ttsService.synthesize(reply.getContent());
+            if (audioData != null) {
+                reply.setAudioData(audioData);
+            }
+        }
+
         sendMessage(session, reply);
     }
 
@@ -145,6 +159,15 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         // 使用ChatService处理音频
         ChatMessage reply = chatService.processAudioMessage(session.getId(), message.getAudioData());
+
+        // 如果TTS可用，添加语音
+        if (ttsService.isAvailable() && reply.getContent() != null) {
+            String audioData = ttsService.synthesize(reply.getContent());
+            if (audioData != null) {
+                reply.setAudioData(audioData);
+            }
+        }
+
         sendMessage(session, reply);
     }
 
@@ -156,7 +179,6 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 message.getImageData() != null ? message.getImageData().length() : 0);
 
         // 视频帧处理可以用于上下文理解，但通常不直接回复
-        // 可以在这里添加视频帧分析逻辑
     }
 
     /**
