@@ -43,6 +43,8 @@ async function init() {
     messageInput.addEventListener('keypress', handleKeyPress);
     startRecordBtn.addEventListener('click', toggleRecording);
     stopRecordBtn.addEventListener('click', stopRecording);
+    uploadImageBtn.addEventListener('click', () => imageFileInput.click());
+    imageFileInput.addEventListener('change', handleImageUpload);
 
     // 绑定模态框事件
     document.getElementById('helpBtn').addEventListener('click', () => showModal('helpModal'));
@@ -196,6 +198,50 @@ function captureFrame() {
     console.log('捕获帧大小:', Math.round(imageData.length / 1024), 'KB');
 
     showToast('图片已发送', 'success');
+}
+
+/**
+ * 处理图片上传
+ */
+function handleImageUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // 检查文件类型
+    if (!file.type.startsWith('image/')) {
+        showToast('请选择图片文件', 'error');
+        return;
+    }
+
+    // 检查文件大小（限制10MB）
+    if (file.size > 10 * 1024 * 1024) {
+        showToast('图片文件不能超过10MB', 'error');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const imageData = e.target.result;
+
+        // 添加到对话
+        addMessage('user', '📁 已上传图片，请识别图片内容');
+
+        // 发送到服务器
+        sendImageMessage(imageData);
+
+        console.log('上传图片大小:', Math.round(imageData.length / 1024), 'KB');
+
+        showToast('图片已发送', 'success');
+    };
+
+    reader.onerror = () => {
+        showToast('读取图片文件失败', 'error');
+    };
+
+    reader.readAsDataURL(file);
+
+    // 清空input，允许重复上传同一文件
+    event.target.value = '';
 }
 
 /**
