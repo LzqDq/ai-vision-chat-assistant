@@ -203,6 +203,25 @@ body {
     word-wrap: break-word;
 }
 
+.message-time {
+    font-size: 0.75rem;
+    color: #999;
+    margin-top: 4px;
+    padding: 0 4px;
+}
+
+.user-message .message-time {
+    text-align: right;
+}
+
+.ai-message .message-time {
+    text-align: left;
+}
+
+.system-message .message-time {
+    text-align: center;
+}
+
 .system-message .message-content {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
