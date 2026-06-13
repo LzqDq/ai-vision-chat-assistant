@@ -1,0 +1,50 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ai-vision-chat-assistant
+
+# AI服务配置
+ai:
+  # 多模态视觉模型配置
+  vision:
+    enabled: true
+    model: qwen-vl-plus
+    api-key: ${VISION_API_KEY:}
+    max-tokens: 1500
+
+  # 语音识别(ASR)配置
+  asr:
+    enabled: true
+    provider: aliyun
+    api-key: ${ASR_API_KEY:}
+    app-key: ${ASR_APP_KEY:}
+
+  # 语音合成(TTS)配置
+  tts:
+    enabled: true
+    provider: aliyun
+    api-key: ${TTS_API_KEY:}
+    app-key: ${TTS_APP_KEY:}
+    voice: xiaoyun
+
+# 成本控制配置
+cost:
+  # 视频帧采样间隔(毫秒)
+  frame-sample-interval: 2000
+  # 图片压缩质量(0-1)
+  image-compression-quality: 0.6
+  # 启用语音活动检测
+  vad-enabled: true
+  # 帧相似度阈值(超过此值不发送)
+  frame-similarity-threshold: 0.95
+
+# WebSocket配置
+websocket:
+  max-text-message-size: 65536
+  max-binary-message-size: 65536
+
+logging:
+  level:
+    com.visionchat: DEBUG
