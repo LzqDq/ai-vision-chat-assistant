@@ -154,27 +154,27 @@ public class ChatService {
         // 生成AI回复
         String replyText = generateReply(context, userMessage);
 
-        // 合成语音
-        String audioData = null;
-        if (ttsService.isAvailable()) {
-            audioData = ttsService.synthesize(replyText);
-        }
-
-        // 创建回复消息
-        ChatMessage reply;
-        if (audioData != null && !audioData.isEmpty()) {
-            reply = ChatMessage.builder()
-                    .type(ChatMessage.MessageType.TEXT)
-                    .content(replyText)
-                    .audioData(audioData)
-                    .sender("ai")
-                    .build();
-        } else {
-            reply = ChatMessage.createTextMessage(replyText, "ai");
-        }
+        // 创建回复消息（先返回文本）
+        ChatMessage reply = ChatMessage.createTextMessage(replyText, "ai");
 
         // 添加回复到历史
         context.addMessage(reply);
+
+        // 异步合成语音（不阻塞回复）
+        if (ttsService.isAvailable()) {
+            ttsService.synthesizeAsync(replyText)
+                    .thenAccept(audioData -> {
+                        if (audioData != null && !audioData.isEmpty()) {
+                            reply.setAudioData(audioData);
+                            // 这里可以发送语音消息给客户端
+                            logger.info("语音合成完成，大小: {} bytes", audioData.length());
+                        }
+                    })
+                    .exceptionally(e -> {
+                        logger.error("语音合成失败", e);
+                        return null;
+                    });
+        }
 
         return reply;
     }
