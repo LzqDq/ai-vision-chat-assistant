@@ -12,7 +12,7 @@ ai:
     enabled: true
     model: qwen-vl-plus
     api-key: ${VISION_API_KEY:}
-    max-tokens: 1500
+    max-tokens: 500
 
   # 语音识别(ASR)配置
   asr:
@@ -32,9 +32,9 @@ ai:
 # 成本控制配置
 cost:
   # 视频帧采样间隔(毫秒)
-  frame-sample-interval: 2000
+  frame-sample-interval: 3000
   # 图片压缩质量(0-1)
-  image-compression-quality: 0.6
+  image-compression-quality: 0.5
   # 启用语音活动检测
   vad-enabled: true
   # 帧相似度阈值(超过此值不发送)
