@@ -20,13 +20,15 @@ public class ChatService {
     // 存储所有会话的上下文
     private final ConcurrentHashMap<String, ChatContext> contexts = new ConcurrentHashMap<>();
 
-    // AI服务依赖（可以替换为实际的AI服务）
+    // AI服务依赖
     private final VisionService visionService;
     private final AsrService asrService;
+    private final TtsService ttsService;
 
-    public ChatService(VisionService visionService, AsrService asrService) {
+    public ChatService(VisionService visionService, AsrService asrService, TtsService ttsService) {
         this.visionService = visionService;
         this.asrService = asrService;
+        this.ttsService = ttsService;
     }
 
     /**
@@ -125,6 +127,47 @@ public class ChatService {
 
         // 创建回复消息
         ChatMessage reply = ChatMessage.createTextMessage(replyText, "ai");
+
+        // 添加回复到历史
+        context.addMessage(reply);
+
+        return reply;
+    }
+
+    /**
+     * 生成AI回复（带语音）
+     */
+    public ChatMessage processTextMessageWithVoice(String sessionId, String userMessage) {
+        logger.info("处理文本消息（带语音）: sessionId={}, message={}", sessionId, userMessage);
+
+        // 获取对话上下文
+        ChatContext context = getOrCreateContext(sessionId);
+
+        // 添加用户消息到历史
+        ChatMessage userMsg = ChatMessage.createTextMessage(userMessage, "user");
+        context.addMessage(userMsg);
+
+        // 生成AI回复
+        String replyText = generateReply(context, userMessage);
+
+        // 合成语音
+        String audioData = null;
+        if (ttsService.isAvailable()) {
+            audioData = ttsService.synthesize(replyText);
+        }
+
+        // 创建回复消息
+        ChatMessage reply;
+        if (audioData != null && !audioData.isEmpty()) {
+            reply = ChatMessage.builder()
+                    .type(ChatMessage.MessageType.TEXT)
+                    .content(replyText)
+                    .audioData(audioData)
+                    .sender("ai")
+                    .build();
+        } else {
+            reply = ChatMessage.createTextMessage(replyText, "ai");
+        }
 
         // 添加回复到历史
         context.addMessage(reply);
