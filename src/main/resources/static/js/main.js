@@ -495,6 +495,7 @@ function handleWebSocketMessage(message) {
 
     switch (message.type) {
         case 'TEXT':
+            hideTypingIndicator();
             addMessage('ai', message.content);
             // 如果有音频数据，播放语音
             if (message.audioData) {
@@ -502,9 +503,11 @@ function handleWebSocketMessage(message) {
             }
             break;
         case 'SYSTEM':
+            hideTypingIndicator();
             addMessage('system', message.content);
             break;
         case 'ERROR':
+            hideTypingIndicator();
             addMessage('system', '❌ ' + message.errorMessage);
             showToast(message.errorMessage, 'error');
             break;
@@ -556,6 +559,27 @@ function sendWebSocketMessage(message) {
 }
 
 /**
+ * 显示打字指示器
+ */
+function showTypingIndicator() {
+    const indicator = document.getElementById('typingIndicator');
+    if (indicator) {
+        indicator.style.display = 'flex';
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+}
+
+/**
+ * 隐藏打字指示器
+ */
+function hideTypingIndicator() {
+    const indicator = document.getElementById('typingIndicator');
+    if (indicator) {
+        indicator.style.display = 'none';
+    }
+}
+
+/**
  * 启动心跳
  */
 let heartbeatTimer = null;
@@ -602,6 +626,7 @@ function sendMessage() {
 
     if (sendWebSocketMessage(message)) {
         messageInput.value = '';
+        showTypingIndicator();
     }
 }
 
@@ -615,7 +640,9 @@ function sendImageMessage(imageData) {
         sender: 'user'
     };
 
-    sendWebSocketMessage(message);
+    if (sendWebSocketMessage(message)) {
+        showTypingIndicator();
+    }
 }
 
 /**
