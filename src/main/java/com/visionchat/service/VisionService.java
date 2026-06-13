@@ -1,12 +1,17 @@
 package com.visionchat.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visionchat.config.VisionConfig;
+import okhttp3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.util.Base64;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 视觉AI服务
@@ -17,9 +22,17 @@ public class VisionService {
 
     private static final Logger logger = LoggerFactory.getLogger(VisionService.class);
     private final VisionConfig config;
+    private final OkHttpClient httpClient;
+    private final ObjectMapper objectMapper;
 
     public VisionService(VisionConfig config) {
         this.config = config;
+        this.httpClient = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .build();
+        this.objectMapper = new ObjectMapper();
     }
 
     /**
@@ -105,34 +118,113 @@ public class VisionService {
      * 调用视觉API
      */
     private String callVisionAPI(String imageData, String prompt) {
-        // TODO: 实现实际的API调用
-        // 这里使用模拟响应
-
-        logger.debug("调用视觉API, 模型: {}", config.getModel());
-
-        // 模拟API延迟
         try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+            logger.debug("调用视觉API, 模型: {}", config.getModel());
 
-        // 返回模拟结果
-        return mockAnalyzeImage(imageData, prompt);
+            // 构建请求JSON
+            VisionRequest request = new VisionRequest(config.getModel(), imageData, prompt);
+            String requestJson = objectMapper.writeValueAsString(request);
+
+            // 构建HTTP请求
+            Request httpRequest = new Request.Builder()
+                    .url(config.getEndpoint())
+                    .post(RequestBody.create(requestJson, MediaType.parse("application/json")))
+                    .addHeader("Authorization", "Bearer " + config.getApiKey())
+                    .addHeader("Content-Type", "application/json")
+                    .build();
+
+            // 发送请求
+            try (Response response = httpClient.newCall(httpRequest).execute()) {
+                if (!response.isSuccessful()) {
+                    logger.error("视觉API请求失败: {}", response.code());
+                    return null;
+                }
+
+                String responseBody = response.body().string();
+                JsonNode jsonResponse = objectMapper.readTree(responseBody);
+
+                // 检查响应状态
+                if (jsonResponse.has("error_code")) {
+                    logger.error("视觉API错误: {}", jsonResponse.get("error_message").asText());
+                    return null;
+                }
+
+                // 获取分析结果
+                if (jsonResponse.has("choices") && jsonResponse.get("choices").isArray()) {
+                    JsonNode choices = jsonResponse.get("choices");
+                    if (choices.size() > 0) {
+                        JsonNode firstChoice = choices.get(0);
+                        if (firstChoice.has("message") && firstChoice.get("message").has("content")) {
+                            String result = firstChoice.get("message").get("content").asText();
+                            logger.info("视觉分析成功");
+                            return result;
+                        }
+                    }
+                }
+
+                logger.error("视觉API响应格式错误");
+                return null;
+            }
+
+        } catch (IOException e) {
+            logger.error("视觉API调用失败", e);
+            return null;
+        }
     }
 
     /**
-     * 模拟图片分析（开发测试用）
+     * 视觉API请求对象
      */
-    private String mockAnalyzeImage(String imageData, String prompt) {
-        int size = imageData.length();
+    private static class VisionRequest {
+        public final String model;
+        public final Object[] messages;
 
-        if (size < 10000) {
-            return "这是一张简单的图片，画面中可能包含文字或简单图形。";
-        } else if (size < 50000) {
-            return "这是一张中等复杂度的图片，画面中可能包含人物、物体或场景。";
-        } else {
-            return "这是一张高分辨率的图片，画面内容丰富，可能包含多个物体、人物或复杂场景。";
+        public VisionRequest(String model, String imageData, String prompt) {
+            this.model = model;
+            this.messages = new Object[]{
+                    new Message("user", new Object[]{
+                            new ImageContent("image_url", new ImageUrl("data:image/jpeg;base64," + imageData)),
+                            new TextContent("text", prompt)
+                    })
+            };
+        }
+    }
+
+    private static class Message {
+        public final String role;
+        public final Object[] content;
+
+        public Message(String role, Object[] content) {
+            this.role = role;
+            this.content = content;
+        }
+    }
+
+    private static class ImageContent {
+        public final String type;
+        public final ImageUrl image_url;
+
+        public ImageContent(String type, ImageUrl image_url) {
+            this.type = type;
+            this.image_url = image_url;
+        }
+    }
+
+    private static class ImageUrl {
+        public final String url;
+
+        public ImageUrl(String url) {
+            this.url = url;
+        }
+    }
+
+    private static class TextContent {
+        public final String type;
+        public final String text;
+
+        public TextContent(String type, String text) {
+            this.type = type;
+            this.text = text;
         }
     }
 
