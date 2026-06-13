@@ -4,8 +4,9 @@
 
 // 全局变量
 let videoStream = null;
-let mediaRecorder = null;
-let audioChunks = [];
+let audioProcessor = null;
+let isRecording = false;
+let vadTimer = null;
 
 // DOM元素
 const videoElement = document.getElementById('videoElement');
@@ -26,14 +27,18 @@ const connectionStatus = document.getElementById('connectionStatus');
 // 初始化
 document.addEventListener('DOMContentLoaded', init);
 
-function init() {
+async function init() {
+    // 初始化音频处理器
+    audioProcessor = new AudioProcessor();
+    await audioProcessor.initialize();
+
     // 绑定事件
     startCameraBtn.addEventListener('click', startCamera);
     stopCameraBtn.addEventListener('click', stopCamera);
     captureBtn.addEventListener('click', captureFrame);
     sendBtn.addEventListener('click', sendMessage);
     messageInput.addEventListener('keypress', handleKeyPress);
-    startRecordBtn.addEventListener('click', startRecording);
+    startRecordBtn.addEventListener('click', toggleRecording);
     stopRecordBtn.addEventListener('click', stopRecording);
 
     // 检查浏览器支持
@@ -161,46 +166,63 @@ function captureFrame() {
 }
 
 /**
+ * 切换录音状态
+ */
+async function toggleRecording() {
+    if (isRecording) {
+        stopRecording();
+    } else {
+        await startRecording();
+    }
+}
+
+/**
  * 开始录音
  */
 async function startRecording() {
     try {
-        // 请求麦克风权限
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-        // 创建MediaRecorder
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
-
-        // 录音数据事件
-        mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-                audioChunks.push(event.data);
-            }
-        };
-
-        // 录音停止事件
-        mediaRecorder.onstop = () => {
-            const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-            console.log('录音大小:', Math.round(audioBlob.size / 1024), 'KB');
-
-            // TODO: 发送到后端进行语音识别
-            addMessage('user', '🎤 已录音，正在识别...');
-
-            // 停止所有音轨
-            stream.getTracks().forEach(track => track.stop());
-        };
-
         // 开始录音
-        mediaRecorder.start();
+        const success = await audioProcessor.startRecording(
+            // 数据回调
+            (data) => {
+                // 实时音频数据可用于流式ASR
+                console.log('收到音频数据:', data.size, 'bytes');
+            },
+            // 停止回调
+            async (audioBlob) => {
+                console.log('录音完成, 大小:', Math.round(audioBlob.size / 1024), 'KB');
 
-        // 更新UI
-        startRecordBtn.disabled = true;
-        stopRecordBtn.disabled = false;
-        micStatus.textContent = '录音中';
-        micStatus.classList.add('active');
+                // 转换为Base64
+                const base64 = await audioProcessor.blobToBase64(audioBlob);
 
-        showToast('开始录音', 'info');
+                // 添加到对话
+                addMessage('user', '🎤 已录音，正在识别...');
+
+                // TODO: 发送到后端进行语音识别
+                // 模拟识别结果
+                setTimeout(() => {
+                    addMessage('ai', '语音识别功能正在开发中...');
+                }, 1000);
+            }
+        );
+
+        if (success) {
+            isRecording = true;
+
+            // 更新UI
+            startRecordBtn.textContent = '⏹️ 停止录音';
+            startRecordBtn.classList.add('recording');
+            stopRecordBtn.disabled = false;
+            micStatus.textContent = '录音中';
+            micStatus.classList.add('active');
+
+            showToast('开始录音', 'info');
+
+            // 启动VAD检测
+            startVADDetection();
+        } else {
+            showToast('无法开始录音', 'error');
+        }
 
     } catch (error) {
         console.error('麦克风访问错误:', error);
@@ -217,17 +239,75 @@ async function startRecording() {
  * 停止录音
  */
 function stopRecording() {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
+    if (isRecording) {
+        audioProcessor.stopRecording();
+        isRecording = false;
+
+        // 停止VAD检测
+        stopVADDetection();
+
+        // 更新UI
+        startRecordBtn.textContent = '🎤 按住说话';
+        startRecordBtn.classList.remove('recording');
+        stopRecordBtn.disabled = true;
+        micStatus.textContent = '未录音';
+        micStatus.classList.remove('active');
+
+        showToast('录音已停止', 'info');
     }
+}
 
-    // 更新UI
-    startRecordBtn.disabled = false;
-    stopRecordBtn.disabled = true;
-    micStatus.textContent = '未录音';
-    micStatus.classList.remove('active');
+/**
+ * 启动VAD（语音活动检测）
+ */
+function startVADDetection() {
+    // 每100ms检测一次音量
+    vadTimer = setInterval(() => {
+        if (audioProcessor && isRecording) {
+            const volume = audioProcessor.getVolume();
+            const isActive = audioProcessor.isVoiceActive(30);
 
-    showToast('录音已停止', 'info');
+            // 更新音量指示器（可选）
+            updateVolumeIndicator(volume, isActive);
+        }
+    }, 100);
+}
+
+/**
+ * 停止VAD检测
+ */
+function stopVADDetection() {
+    if (vadTimer) {
+        clearInterval(vadTimer);
+        vadTimer = null;
+    }
+}
+
+/**
+ * 更新音量指示器
+ */
+function updateVolumeIndicator(volume, isActive) {
+    const volumeLevel = document.getElementById('volumeLevel');
+    const volumeText = document.getElementById('volumeText');
+    const volumeIndicator = document.getElementById('volumeIndicator');
+
+    if (volumeLevel && volumeText) {
+        // 更新音量条
+        const percentage = Math.min(100, (volume / 128) * 100);
+        volumeLevel.style.width = percentage + '%';
+
+        // 更新音量文字
+        volumeText.textContent = `音量: ${Math.round(volume)}`;
+
+        // 更新状态
+        if (isActive) {
+            micStatus.textContent = '🎤 检测到语音';
+            volumeIndicator.classList.add('active');
+        } else {
+            micStatus.textContent = '🎤 录音中(静音)';
+            volumeIndicator.classList.remove('active');
+        }
+    }
 }
 
 /**

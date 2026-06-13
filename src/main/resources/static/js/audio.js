@@ -11,6 +11,9 @@ class AudioProcessor {
         this.isRecording = false;
         this.onDataCallback = null;
         this.onStopCallback = null;
+        this.audioContext = null;
+        this.analyser = null;
+        this.dataArray = null;
     }
 
     /**
@@ -65,13 +68,24 @@ class AudioProcessor {
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
-                    autoGainControl: true
+                    autoGainControl: true,
+                    sampleRate: 16000
                 }
             });
 
+            // 创建音频分析器（用于VAD）
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.analyser = this.audioContext.createAnalyser();
+            this.analyser.fftSize = 256;
+            const source = this.audioContext.createMediaStreamSource(this.audioStream);
+            source.connect(this.analyser);
+            this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+
             // 创建MediaRecorder
+            const mimeType = this.getSupportedMimeType();
             this.mediaRecorder = new MediaRecorder(this.audioStream, {
-                mimeType: this.getSupportedMimeType()
+                mimeType: mimeType,
+                audioBitsPerSecond: 16000
             });
 
             this.audioChunks = [];
@@ -89,7 +103,7 @@ class AudioProcessor {
             };
 
             this.mediaRecorder.onstop = () => {
-                const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
+                const audioBlob = new Blob(this.audioChunks, { type: mimeType });
                 if (this.onStopCallback) {
                     this.onStopCallback(audioBlob);
                 }
@@ -101,11 +115,11 @@ class AudioProcessor {
                 this.cleanup();
             };
 
-            // 开始录音
-            this.mediaRecorder.start(100); // 每100ms触发一次数据
+            // 开始录音，每250ms触发一次数据
+            this.mediaRecorder.start(250);
             this.isRecording = true;
 
-            console.log('开始录音');
+            console.log('开始录音, MIME类型:', mimeType);
             return true;
 
         } catch (error) {
@@ -168,6 +182,30 @@ class AudioProcessor {
     }
 
     /**
+     * 获取当前音量（用于VAD）
+     */
+    getVolume() {
+        if (!this.analyser || !this.dataArray) {
+            return 0;
+        }
+
+        this.analyser.getByteFrequencyData(this.dataArray);
+        let sum = 0;
+        for (let i = 0; i < this.dataArray.length; i++) {
+            sum += this.dataArray[i];
+        }
+        return sum / this.dataArray.length;
+    }
+
+    /**
+     * 检测是否有语音活动
+     */
+    isVoiceActive(threshold = 30) {
+        const volume = this.getVolume();
+        return volume > threshold;
+    }
+
+    /**
      * 清理资源
      */
     cleanup() {
@@ -175,7 +213,13 @@ class AudioProcessor {
             this.audioStream.getTracks().forEach(track => track.stop());
             this.audioStream = null;
         }
+        if (this.audioContext) {
+            this.audioContext.close();
+            this.audioContext = null;
+        }
         this.mediaRecorder = null;
+        this.analyser = null;
+        this.dataArray = null;
         this.audioChunks = [];
     }
 
@@ -185,17 +229,36 @@ class AudioProcessor {
     getRecordingState() {
         return {
             isRecording: this.isRecording,
-            hasPermission: !!this.audioStream
+            hasPermission: !!this.audioStream,
+            volume: this.getVolume()
         };
     }
 
     /**
-     * 转换为WAV格式
+     * 将Blob转换为ArrayBuffer
      */
-    async convertToWav(audioBlob) {
-        // 这里可以添加音频格式转换逻辑
-        // 目前直接返回原始blob
-        return audioBlob;
+    async blobToArrayBuffer(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(blob);
+        });
+    }
+
+    /**
+     * 将Blob转换为Base64
+     */
+    async blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const base64 = reader.result.split(',')[1];
+                resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
     }
 
     /**
@@ -206,7 +269,8 @@ class AudioProcessor {
             return null;
         }
 
-        const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
+        const mimeType = this.getSupportedMimeType();
+        const audioBlob = new Blob(this.audioChunks, { type: mimeType });
         return audioBlob;
     }
 }
