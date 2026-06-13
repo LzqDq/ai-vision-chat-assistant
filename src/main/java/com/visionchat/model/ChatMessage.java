@@ -74,7 +74,8 @@ public class ChatMessage {
         SYSTEM,         // 系统消息
         ERROR,          // 错误消息
         PING,           // 心跳
-        PONG            // 心跳响应
+        PONG,           // 心跳响应
+        CLEAR_SESSION   // 清空会话
     }
 
     /**

@@ -43,6 +43,7 @@ async function init() {
     messageInput.addEventListener('keypress', handleKeyPress);
     startRecordBtn.addEventListener('click', toggleRecording);
     stopRecordBtn.addEventListener('click', stopRecording);
+    clearChatBtn.addEventListener('click', clearChat);
 
     // 绑定模态框事件
     document.getElementById('helpBtn').addEventListener('click', () => showModal('helpModal'));
@@ -366,6 +367,27 @@ function addMessage(type, content) {
 
     // 滚动到底部
     chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+/**
+ * 清空聊天记录
+ */
+function clearChat() {
+    if (confirm('确定要清空所有聊天记录吗？')) {
+        // 保留系统欢迎消息，清除其他消息
+        const welcomeMessage = chatContainer.querySelector('.system-message');
+        chatContainer.innerHTML = '';
+        if (welcomeMessage) {
+            chatContainer.appendChild(welcomeMessage);
+        }
+
+        // 通知后端清空会话历史
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'CLEAR_SESSION' }));
+        }
+
+        showToast('聊天记录已清空', 'success');
+    }
 }
 
 /**

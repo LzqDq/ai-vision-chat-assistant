@@ -91,6 +91,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 case VIDEO_FRAME:
                     handleVideoFrame(session, message);
                     break;
+                case CLEAR_SESSION:
+                    handleClearSession(session);
+                    break;
                 default:
                     logger.warn("未知消息类型: {}", message.getType());
             }
@@ -122,6 +125,16 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private void handlePing(WebSocketSession session) throws IOException {
         ChatMessage pong = ChatMessage.createPongMessage();
         sendMessage(session, pong);
+    }
+
+    /**
+     * 处理清空会话请求
+     */
+    private void handleClearSession(WebSocketSession session) {
+        logger.info("清空会话: {}", session.getId());
+        chatService.clearSession(session.getId());
+        ChatMessage reply = ChatMessage.createSystemMessage("会话已清空");
+        sendMessage(session, reply);
     }
 
     /**
