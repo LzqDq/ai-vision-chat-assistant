@@ -43,6 +43,8 @@ async function init() {
     messageInput.addEventListener('keypress', handleKeyPress);
     startRecordBtn.addEventListener('click', toggleRecording);
     stopRecordBtn.addEventListener('click', stopRecording);
+    exportChatBtn.addEventListener('click', exportChat);
+    clearChatBtn.addEventListener('click', clearChat);
 
     // 绑定模态框事件
     document.getElementById('helpBtn').addEventListener('click', () => showModal('helpModal'));
@@ -366,6 +368,71 @@ function addMessage(type, content) {
 
     // 滚动到底部
     chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+/**
+ * 导出聊天记录
+ */
+function exportChat() {
+    const messages = chatContainer.querySelectorAll('.chat-message');
+    if (messages.length === 0) {
+        showToast('没有聊天记录可导出', 'error');
+        return;
+    }
+
+    let chatText = 'AI视觉对话助手 - 聊天记录\n';
+    chatText += '导出时间: ' + new Date().toLocaleString() + '\n';
+    chatText += '='.repeat(50) + '\n\n';
+
+    messages.forEach(msg => {
+        const content = msg.querySelector('.message-content');
+        if (!content) return;
+
+        let sender = '未知';
+        if (msg.classList.contains('user-message')) {
+            sender = '用户';
+        } else if (msg.classList.contains('ai-message')) {
+            sender = 'AI';
+        } else if (msg.classList.contains('system-message')) {
+            sender = '系统';
+        }
+
+        chatText += `[${sender}]\n${content.textContent}\n\n`;
+    });
+
+    // 创建下载链接
+    const blob = new Blob([chatText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chat-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast('聊天记录已导出', 'success');
+}
+
+/**
+ * 清空聊天记录
+ */
+function clearChat() {
+    if (confirm('确定要清空所有聊天记录吗？')) {
+        // 保留系统欢迎消息，清除其他消息
+        const welcomeMessage = chatContainer.querySelector('.system-message');
+        chatContainer.innerHTML = '';
+        if (welcomeMessage) {
+            chatContainer.appendChild(welcomeMessage);
+        }
+
+        // 通知后端清空会话历史
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'CLEAR_SESSION' }));
+        }
+
+        showToast('聊天记录已清空', 'success');
+    }
 }
 
 /**

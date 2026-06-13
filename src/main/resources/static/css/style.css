@@ -176,6 +176,26 @@ body {
     flex-direction: column;
 }
 
+.chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.chat-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.chat-actions {
+    display: flex;
+    gap: 8px;
+}
+
 .chat-container {
     flex: 1;
     overflow-y: auto;
@@ -443,6 +463,12 @@ body {
 .btn-outline.active {
     background: #667eea;
     color: white;
+}
+
+/* 小按钮 */
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 0.85rem;
 }
 
 /* 模态框样式 */
