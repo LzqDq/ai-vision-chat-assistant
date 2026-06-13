@@ -1,3 +1,25 @@
+/* CSS变量 */
+:root {
+    --bg-primary: #f8f9fa;
+    --bg-secondary: white;
+    --text-primary: #333;
+    --text-secondary: #666;
+    --border-color: #eee;
+    --shadow-color: rgba(0, 0, 0, 0.2);
+    --header-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+/* 暗黑模式变量 */
+[data-theme="dark"] {
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16213e;
+    --text-primary: #e0e0e0;
+    --text-secondary: #b0b0b0;
+    --border-color: #2a2a4a;
+    --shadow-color: rgba(0, 0, 0, 0.4);
+    --header-gradient: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+}
+
 /* 全局样式 */
 * {
     margin: 0;
@@ -7,10 +29,11 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--header-gradient);
     min-height: 100vh;
-    color: #333;
+    color: var(--text-primary);
     line-height: 1.6;
+    transition: background 0.3s ease, color 0.3s ease;
 }
 
 .container {
@@ -51,10 +74,10 @@ body {
 
 /* 视频区域样式 */
 .video-section {
-    background: white;
+    background: var(--bg-secondary);
     border-radius: 16px;
     padding: 20px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 10px 30px var(--shadow-color);
 }
 
 .video-container {
@@ -168,19 +191,34 @@ body {
 
 /* 对话区域样式 */
 .chat-section {
-    background: white;
+    background: var(--bg-secondary);
     border-radius: 16px;
     padding: 20px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 10px 30px var(--shadow-color);
     display: flex;
     flex-direction: column;
+}
+
+.chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.chat-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
 }
 
 .chat-container {
     flex: 1;
     overflow-y: auto;
     padding: 15px;
-    background: #f8f9fa;
+    background: var(--bg-primary);
     border-radius: 12px;
     margin-bottom: 15px;
     max-height: 400px;

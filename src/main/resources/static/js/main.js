@@ -43,6 +43,7 @@ async function init() {
     messageInput.addEventListener('keypress', handleKeyPress);
     startRecordBtn.addEventListener('click', toggleRecording);
     stopRecordBtn.addEventListener('click', stopRecording);
+    darkModeBtn.addEventListener('click', toggleDarkMode);
 
     // 绑定模态框事件
     document.getElementById('helpBtn').addEventListener('click', () => showModal('helpModal'));
@@ -69,6 +70,9 @@ async function init() {
     // 检查浏览器支持
     checkBrowserSupport();
 
+    // 加载主题设置
+    loadTheme();
+
     // 建立WebSocket连接
     connectWebSocket();
 
@@ -83,6 +87,39 @@ function checkBrowserSupport() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         showToast('您的浏览器不支持摄像头访问，请使用现代浏览器', 'error');
         startCameraBtn.disabled = true;
+    }
+}
+
+/**
+ * 切换暗黑模式
+ */
+function toggleDarkMode() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+    if (isDark) {
+        document.documentElement.removeAttribute('data-theme');
+        darkModeBtn.textContent = '🌙';
+        darkModeBtn.title = '切换暗黑模式';
+        localStorage.setItem('theme', 'light');
+    } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        darkModeBtn.textContent = '☀️';
+        darkModeBtn.title = '切换明亮模式';
+        localStorage.setItem('theme', 'dark');
+    }
+
+    showToast(isDark ? '已切换到明亮模式' : '已切换到暗黑模式', 'success');
+}
+
+/**
+ * 加载主题设置
+ */
+function loadTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        darkModeBtn.textContent = '☀️';
+        darkModeBtn.title = '切换明亮模式';
     }
 }
 
