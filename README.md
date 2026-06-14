@@ -50,8 +50,7 @@ mvn spring-boot:run
 ```
 
 4. 访问应用
-打开浏览器访问 http://localhost:8080
-
+打开浏览器访问https://ai-vision-chat-assistant-production.up.railway.app/
 ## 项目结构
 
 ```
