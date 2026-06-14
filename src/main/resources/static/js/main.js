@@ -224,32 +224,34 @@ function captureFrame() {
         return;
     }
 
-    // 设置canvas尺寸
-    canvasElement.width = videoElement.videoWidth;
-    canvasElement.height = videoElement.videoHeight;
-
-    // 绘制当前帧
-    const ctx = canvasElement.getContext('2d');
-    ctx.drawImage(videoElement, 0, 0);
-
-    // 获取原始图片数据
     const quality = (parseInt(document.getElementById('imageQuality').value) || 60) / 100;
     const maxWidth = parseInt(document.getElementById('maxImageWidth')?.value) || 800;
+
+    // 计算缩放尺寸
+    let width = videoElement.videoWidth;
+    let height = videoElement.videoHeight;
+    if (width > maxWidth) {
+        height = Math.round(height * maxWidth / width);
+        width = maxWidth;
+    }
+
+    // 在canvas上直接缩放绘制
+    canvasElement.width = width;
+    canvasElement.height = height;
+    const ctx = canvasElement.getContext('2d');
+    ctx.drawImage(videoElement, 0, 0, width, height);
+
+    // 编码为JPEG
     let imageData = canvasElement.toDataURL('image/jpeg', quality);
 
-    // 本地预处理：缩放+压缩
-    const originalSize = Math.round(imageData.length / 1024);
-    imageData = preprocessImageSync(imageData, maxWidth, quality);
-    const processedSize = Math.round(imageData.length / 1024);
+    const imageSize = Math.round(imageData.length / 1024);
+    console.log(`图片: ${width}x${height}, ${imageSize}KB`);
 
     // 添加到对话
     addMessage('user', '📸 已拍照，请识别图片内容');
 
     // 发送到服务器
     sendImageMessage(imageData);
-
-    const savedPercent = originalSize > 0 ? Math.round((1 - processedSize / originalSize) * 100) : 0;
-    console.log(`图片预处理: ${originalSize}KB → ${processedSize}KB (节省${savedPercent}%)`);
 
     showToast('图片已发送', 'success');
 }
@@ -258,35 +260,6 @@ function captureFrame() {
  * 本地图像预处理（同步版，用于已有的base64数据）
  * @param {string} imageData - 原始base64图片数据
  * @param {number} maxWidth - 最大宽度（像素）
- * @param {number} quality - JPEG压缩质量 (0-1)
- * @returns {string} 处理后的base64图片数据
- */
-function preprocessImageSync(imageData, maxWidth, quality) {
-    maxWidth = maxWidth || 800;
-    quality = quality || 0.6;
-
-    const img = new Image();
-    img.src = imageData;
-
-    // 计算缩放后的尺寸
-    let width = img.width;
-    let height = img.height;
-
-    if (width > maxWidth) {
-        height = Math.round(height * maxWidth / width);
-        width = maxWidth;
-    }
-
-    // 使用离屏canvas进行缩放和压缩
-    const offscreen = document.createElement('canvas');
-    offscreen.width = width;
-    offscreen.height = height;
-    const ctx = offscreen.getContext('2d');
-    ctx.drawImage(img, 0, 0, width, height);
-
-    return offscreen.toDataURL('image/jpeg', quality);
-}
-
 /**
  * 处理图片上传
  */
@@ -308,25 +281,39 @@ function handleImageUpload(event) {
 
     const reader = new FileReader();
     reader.onload = (e) => {
-        let imageData = e.target.result;
+        const img = new Image();
+        img.onload = () => {
+            const quality = (parseInt(document.getElementById('imageQuality').value) || 60) / 100;
+            const maxWidth = parseInt(document.getElementById('maxImageWidth')?.value) || 800;
 
-        // 本地预处理：缩放+压缩
-        const quality = (parseInt(document.getElementById('imageQuality').value) || 60) / 100;
-        const maxWidth = parseInt(document.getElementById('maxImageWidth')?.value) || 800;
-        const originalSize = Math.round(imageData.length / 1024);
-        imageData = preprocessImageSync(imageData, maxWidth, quality);
-        const processedSize = Math.round(imageData.length / 1024);
+            // 计算缩放尺寸
+            let width = img.width;
+            let height = img.height;
+            if (width > maxWidth) {
+                height = Math.round(height * maxWidth / width);
+                width = maxWidth;
+            }
 
-        // 添加到对话
-        addMessage('user', '📁 已上传图片，请识别图片内容');
+            // 在canvas上缩放绘制
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
 
-        // 发送到服务器
-        sendImageMessage(imageData);
+            const imageData = canvas.toDataURL('image/jpeg', quality);
+            const imageSize = Math.round(imageData.length / 1024);
+            console.log(`图片: ${width}x${height}, ${imageSize}KB`);
 
-        const savedPercent = originalSize > 0 ? Math.round((1 - processedSize / originalSize) * 100) : 0;
-        console.log(`图片预处理: ${originalSize}KB → ${processedSize}KB (节省${savedPercent}%)`);
+            // 添加到对话
+            addMessage('user', '📁 已上传图片，请识别图片内容');
 
-        showToast('图片已发送', 'success');
+            // 发送到服务器
+            sendImageMessage(imageData);
+
+            showToast('图片已发送', 'success');
+        };
+        img.src = e.target.result;
     };
 
     reader.onerror = () => {
