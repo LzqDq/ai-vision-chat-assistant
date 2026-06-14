@@ -6,7 +6,7 @@ spring:
     name: ai-vision-chat-assistant
 
   datasource:
-    url: jdbc:h2:file:./data/chatdb;DB_CLOSE_ON_EXIT=FALSE;AUTO_RECONNECT=TRUE
+    url: jdbc:h2:mem:chatdb;DB_CLOSE_ON_EXIT=FALSE
     driver-class-name: org.h2.Driver
     username: sa
     password:

@@ -2,9 +2,11 @@ package com.visionchat.repository;
 
 import com.visionchat.entity.ChatRecord;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -28,7 +30,10 @@ public interface ChatRecordRepository extends JpaRepository<ChatRecord, Long> {
     /**
      * 删除指定会话的所有记录
      */
-    void deleteBySessionId(String sessionId);
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM ChatRecord r WHERE r.sessionId = :sessionId")
+    void deleteBySessionId(@Param("sessionId") String sessionId);
 
     /**
      * 统计指定会话的消息数量
