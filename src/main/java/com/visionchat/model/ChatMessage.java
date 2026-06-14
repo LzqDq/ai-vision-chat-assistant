@@ -54,6 +54,11 @@ public class ChatMessage {
     private String sessionId;
 
     /**
+     * AI模型名称（可选，由前端指定）
+     */
+    private String model;
+
+    /**
      * 消息状态
      */
     private MessageStatus status;

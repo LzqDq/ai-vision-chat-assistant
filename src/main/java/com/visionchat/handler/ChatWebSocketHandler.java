@@ -141,10 +141,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
      * 处理文本消息
      */
     private void handleTextMessage(WebSocketSession session, ChatMessage message) {
-        logger.info("收到文本消息: {}", message.getContent());
+        logger.info("收到文本消息: {}, 模型: {}", message.getContent(), message.getModel());
 
         // 使用ChatService处理消息（带语音）
-        ChatMessage reply = chatService.processTextMessageWithVoice(session.getId(), message.getContent());
+        ChatMessage reply = chatService.processTextMessageWithVoice(session.getId(), message.getContent(), message.getModel());
         sendMessage(session, reply);
     }
 
@@ -152,11 +152,11 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
      * 处理图片消息
      */
     private void handleImageMessage(WebSocketSession session, ChatMessage message) {
-        logger.info("收到图片消息, 大小: {} bytes",
-                message.getImageData() != null ? message.getImageData().length() : 0);
+        logger.info("收到图片消息, 大小: {} bytes, 模型: {}",
+                message.getImageData() != null ? message.getImageData().length() : 0, message.getModel());
 
         // 使用ChatService处理图片
-        ChatMessage reply = chatService.processImageMessage(session.getId(), message.getImageData());
+        ChatMessage reply = chatService.processImageMessage(session.getId(), message.getImageData(), message.getModel());
 
         // 如果TTS可用，添加语音
         if (ttsService.isAvailable() && reply.getContent() != null) {
@@ -173,11 +173,11 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
      * 处理音频消息
      */
     private void handleAudioMessage(WebSocketSession session, ChatMessage message) {
-        logger.info("收到音频消息, 大小: {} bytes",
-                message.getAudioData() != null ? message.getAudioData().length() : 0);
+        logger.info("收到音频消息, 大小: {} bytes, 模型: {}",
+                message.getAudioData() != null ? message.getAudioData().length() : 0, message.getModel());
 
         // 使用ChatService处理音频
-        ChatMessage reply = chatService.processAudioMessage(session.getId(), message.getAudioData());
+        ChatMessage reply = chatService.processAudioMessage(session.getId(), message.getAudioData(), message.getModel());
 
         // 如果TTS可用，添加语音
         if (ttsService.isAvailable() && reply.getContent() != null) {

@@ -52,8 +52,13 @@ async function init() {
     // 绑定模态框事件
     document.getElementById('helpBtn').addEventListener('click', () => showModal('helpModal'));
     document.getElementById('settingsBtn').addEventListener('click', () => showModal('settingsModal'));
+    document.getElementById('historyBtn').addEventListener('click', () => {
+        showModal('historyModal');
+        loadSessionList();
+    });
     document.getElementById('closeHelpBtn').addEventListener('click', () => hideModal('helpModal'));
     document.getElementById('closeSettingsBtn').addEventListener('click', () => hideModal('settingsModal'));
+    document.getElementById('closeHistoryBtn').addEventListener('click', () => hideModal('historyModal'));
     document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
 
     // 自动捕获按钮
@@ -747,11 +752,15 @@ function sendMessage() {
     // 添加到对话区域
     addMessage('user', content);
 
+    // 获取选择的模型
+    const selectedModel = document.getElementById('aiModel').value;
+
     // 发送到服务器
     const message = {
         type: 'TEXT',
         content: content,
-        sender: 'user'
+        sender: 'user',
+        model: selectedModel
     };
 
     if (sendWebSocketMessage(message)) {
@@ -764,10 +773,12 @@ function sendMessage() {
  * 发送图片消息
  */
 function sendImageMessage(imageData) {
+    const selectedModel = document.getElementById('aiModel').value;
     const message = {
         type: 'IMAGE',
         imageData: imageData,
-        sender: 'user'
+        sender: 'user',
+        model: selectedModel
     };
 
     if (sendWebSocketMessage(message)) {
@@ -779,10 +790,12 @@ function sendImageMessage(imageData) {
  * 发送音频消息
  */
 function sendAudioMessage(audioData) {
+    const selectedModel = document.getElementById('aiModel').value;
     const message = {
         type: 'AUDIO',
         audioData: audioData,
-        sender: 'user'
+        sender: 'user',
+        model: selectedModel
     };
 
     sendWebSocketMessage(message);
@@ -807,6 +820,7 @@ function hideModal(modalId) {
  */
 function saveSettings() {
     const settings = {
+        aiModel: document.getElementById('aiModel').value,
         videoQuality: document.getElementById('videoQuality').value,
         imageQuality: document.getElementById('imageQuality').value,
         frameInterval: document.getElementById('frameInterval').value,
@@ -826,6 +840,7 @@ function loadSettings() {
     const saved = localStorage.getItem('visionChatSettings');
     if (saved) {
         const settings = JSON.parse(saved);
+        document.getElementById('aiModel').value = settings.aiModel || 'qwen-vl-plus';
         document.getElementById('videoQuality').value = settings.videoQuality || 'medium';
         document.getElementById('imageQuality').value = settings.imageQuality || 60;
         document.getElementById('imageQualityValue').textContent = (settings.imageQuality || 60) + '%';
@@ -879,6 +894,109 @@ function updateFPS() {
         document.getElementById('fpsDisplay').textContent = fps + ' FPS';
         frameCount = 0;
         lastFpsTime = now;
+    }
+}
+
+/**
+ * 加载会话列表
+ */
+async function loadSessionList() {
+    try {
+        const response = await fetch('/api/sessions');
+        const sessions = await response.json();
+        const listEl = document.getElementById('sessionList');
+
+        if (sessions.length === 0) {
+            listEl.innerHTML = '<p class="empty-hint">暂无历史对话</p>';
+            return;
+        }
+
+        listEl.innerHTML = sessions.map(s => `
+            <div class="session-item" data-session-id="${s.sessionId}">
+                <div class="session-preview">${escapeHtml(s.preview)}</div>
+                <div class="session-meta">
+                    <span>${s.messageCount} 条消息</span>
+                    <span>${formatTimestamp(s.firstTimestamp)}</span>
+                </div>
+                <div class="session-actions">
+                    <button class="btn btn-sm btn-primary load-session-btn" data-id="${s.sessionId}">加载</button>
+                    <button class="btn btn-sm btn-outline delete-session-btn" data-id="${s.sessionId}">删除</button>
+                </div>
+            </div>
+        `).join('');
+
+        // 绑定点击事件
+        listEl.querySelectorAll('.load-session-btn').forEach(btn => {
+            btn.addEventListener('click', () => loadSessionMessages(btn.dataset.id));
+        });
+        listEl.querySelectorAll('.delete-session-btn').forEach(btn => {
+            btn.addEventListener('click', () => deleteSession(btn.dataset.id));
+        });
+    } catch (e) {
+        console.error('加载会话列表失败:', e);
+        showToast('加载历史对话失败', 'error');
+    }
+}
+
+/**
+ * 加载指定会话的消息
+ */
+async function loadSessionMessages(sessionId) {
+    try {
+        const response = await fetch(`/api/sessions/${sessionId}/messages`);
+        const messages = await response.json();
+
+        // 清空当前聊天
+        chatContainer.innerHTML = '';
+
+        // 添加消息
+        messages.forEach(msg => {
+            let type = 'system';
+            if (msg.role === 'USER') type = 'user';
+            else if (msg.role === 'AI') type = 'ai';
+            addMessage(type, msg.content || '');
+        });
+
+        hideModal('historyModal');
+        showToast('历史对话已加载', 'success');
+    } catch (e) {
+        console.error('加载会话消息失败:', e);
+        showToast('加载对话消息失败', 'error');
+    }
+}
+
+/**
+ * 删除指定会话
+ */
+async function deleteSession(sessionId) {
+    if (!confirm('确定删除这个对话记录？')) return;
+    try {
+        await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+        loadSessionList();
+        showToast('对话记录已删除', 'success');
+    } catch (e) {
+        showToast('删除失败', 'error');
+    }
+}
+
+/**
+ * HTML转义
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
+ * 格式化时间戳
+ */
+function formatTimestamp(ts) {
+    if (!ts) return '';
+    try {
+        return new Date(ts).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+        return ts;
     }
 }
 

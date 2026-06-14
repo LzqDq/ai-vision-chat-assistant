@@ -29,8 +29,8 @@
 | US-06 | 作为用户，我希望能控制摄像头和麦克风的开关 | 中 | ✅ 已实现 |
 | US-07 | 作为用户，我希望AI能理解我展示的物品并给出描述 | 高 | ✅ 已实现 |
 | US-08 | 作为用户，我希望对话过程流畅自然，延迟低 | 高 | ✅ 已实现 |
-| US-09 | 作为用户，我希望能选择不同的AI模型 | 低 | ⏳ 待实现 |
-| US-10 | 作为用户，我希望能保存对话记录 | 低 | ⏳ 待实现 |
+| US-09 | 作为用户，我希望能选择不同的AI模型 | 低 | ✅ 已实现 |
+| US-10 | 作为用户，我希望能保存对话记录 | 低 | ✅ 已实现 |
 
 ### 2.2 已实现的用户故事详情
 
@@ -73,6 +73,18 @@
 - **实现方式**: WebSocket实时通信 + 成本优化
 - **功能**: 低延迟双向通信
 - **验证**: 对话过程无明显延迟
+
+#### US-09: 选择不同的AI模型
+- **实现方式**: 前端模型选择下拉框 + 后端动态模型参数传递
+- **功能**: 用户可在设置中选择 qwen-vl-plus（标准）、qwen-vl-max（增强）、qwen-vl-max-latest（最新）
+- **验证**: 切换模型后发送消息，后端日志显示使用了对应模型
+- **涉及文件**: ChatMessage.java, VisionService.java, ChatAIService.java, ChatService.java, ChatWebSocketHandler.java, index.html, main.js
+
+#### US-10: 保存对话记录
+- **实现方式**: H2嵌入式数据库 + JPA持久化 + REST API
+- **功能**: 对话消息自动保存到数据库，支持查看、加载、删除历史对话
+- **验证**: 发送消息后重启应用，从历史记录加载可看到之前的消息
+- **涉及文件**: pom.xml, application.yml, ChatRecord.java, ChatRecordRepository.java, ChatService.java, ChatHistoryController.java, index.html, main.js
 
 ## 3. 成本控制策略
 
@@ -171,16 +183,22 @@
 - **controller/**: 控制器
   - HomeController: 首页控制器
   - StatsController: 统计控制器
+  - ChatHistoryController: 聊天历史REST API
 - **handler/**: WebSocket处理器
   - ChatWebSocketHandler: 聊天消息处理
 - **model/**: 数据模型
-  - ChatMessage: 聊天消息
+  - ChatMessage: 聊天消息（支持model字段）
   - ChatContext: 对话上下文
+- **entity/**: JPA实体
+  - ChatRecord: 聊天记录持久化实体
+- **repository/**: 数据仓库
+  - ChatRecordRepository: 聊天记录数据访问
 - **service/**: 业务服务
   - AsrService: 语音识别服务
-  - VisionService: 视觉理解服务
+  - VisionService: 视觉理解服务（支持动态模型）
   - TtsService: 语音合成服务
-  - ChatService: 对话管理服务
+  - ChatAIService: AI对话服务（支持动态模型）
+  - ChatService: 对话管理服务（集成持久化）
 - **optimizer/**: 优化器
   - CostOptimizer: 成本优化器
 
@@ -195,6 +213,7 @@
   "imageData": "Base64编码的图片数据",
   "audioData": "Base64编码的音频数据",
   "sender": "user|ai|system",
+  "model": "qwen-vl-plus|qwen-vl-max|qwen-vl-max-latest",
   "timestamp": "2024-01-01T00:00:00",
   "sessionId": "会话ID",
   "status": "SENDING|SENT|DELIVERED|READ|FAILED",
@@ -207,6 +226,10 @@
 - `GET /`: 首页
 - `GET /health`: 健康检查
 - `GET /stats`: 优化统计信息
+- `GET /api/sessions`: 获取所有会话列表
+- `GET /api/sessions/{sessionId}/messages`: 获取指定会话的消息
+- `DELETE /api/sessions/{sessionId}`: 删除指定会话
+- `GET /h2-console`: H2数据库管理控制台
 
 ## 6. 部署说明
 
@@ -326,3 +349,8 @@ ai-vision-chat-assistant/
   - 支持摄像头和麦克风访问
   - 集成ASR、TTS、视觉AI服务
   - 实现成本控制优化
+- v1.1.0 (2026-06-14): 新增功能
+  - 支持AI模型选择（qwen-vl-plus/qwen-vl-max/qwen-vl-max-latest）
+  - 实现对话记录持久化存储（H2数据库）
+  - 新增历史对话查看、加载、删除功能
+  - 新增聊天历史REST API

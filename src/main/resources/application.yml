@@ -5,6 +5,26 @@ spring:
   application:
     name: ai-vision-chat-assistant
 
+  datasource:
+    url: jdbc:h2:file:./data/chatdb;DB_CLOSE_ON_EXIT=FALSE;AUTO_RECONNECT=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+    database-platform: org.hibernate.dialect.H2Dialect
+
 # AI服务配置
 ai:
   # 多模态视觉模型配置

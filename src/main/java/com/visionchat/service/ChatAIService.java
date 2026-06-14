@@ -42,16 +42,28 @@ public class ChatAIService {
      * @return AI回复内容
      */
     public String generateReply(List<ChatMessage> messages) {
+        return generateReply(messages, null);
+    }
+
+    /**
+     * 生成AI回复（指定模型）
+     *
+     * @param messages 对话历史
+     * @param model    模型名称（null时默认使用qwen-turbo）
+     * @return AI回复内容
+     */
+    public String generateReply(List<ChatMessage> messages, String model) {
         if (!config.isEnabled() || config.getApiKey() == null || config.getApiKey().isEmpty()) {
             logger.warn("AI服务未配置");
             return null;
         }
 
         try {
-            logger.info("调用AI对话服务, 消息数: {}", messages.size());
+            String effectiveModel = (model != null && !model.isEmpty()) ? model : "qwen-turbo";
+            logger.info("调用AI对话服务, 消息数: {}, 模型: {}", messages.size(), effectiveModel);
 
             // 构建请求JSON
-            ChatRequest request = new ChatRequest("qwen-turbo", messages);
+            ChatRequest request = new ChatRequest(effectiveModel, messages);
             String requestJson = objectMapper.writeValueAsString(request);
 
             // 构建HTTP请求

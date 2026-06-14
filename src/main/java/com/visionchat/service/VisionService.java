@@ -43,6 +43,18 @@ public class VisionService {
      * @return 分析结果
      */
     public String analyzeImage(String imageData, String prompt) {
+        return analyzeImage(imageData, prompt, null);
+    }
+
+    /**
+     * 分析图片内容（指定模型）
+     *
+     * @param imageData 图片数据（Base64编码）
+     * @param prompt    提示词
+     * @param model     模型名称（null时使用默认模型）
+     * @return 分析结果
+     */
+    public String analyzeImage(String imageData, String prompt, String model) {
         if (!config.isEnabled()) {
             logger.warn("视觉服务未启用");
             return null;
@@ -54,13 +66,14 @@ public class VisionService {
         }
 
         try {
-            logger.info("开始分析图片, 大小: {} bytes", imageData.length());
+            String effectiveModel = (model != null && !model.isEmpty()) ? model : config.getModel();
+            logger.info("开始分析图片, 大小: {} bytes, 模型: {}", imageData.length(), effectiveModel);
 
             // 预处理图片
             String processedImage = preprocessImage(imageData);
 
             // 调用视觉API
-            String result = callVisionAPI(processedImage, prompt);
+            String result = callVisionAPI(processedImage, prompt, effectiveModel);
 
             logger.info("图片分析完成");
             return result;
@@ -79,7 +92,19 @@ public class VisionService {
      * @return 分析结果的Future
      */
     public CompletableFuture<String> analyzeImageAsync(String imageData, String prompt) {
-        return CompletableFuture.supplyAsync(() -> analyzeImage(imageData, prompt));
+        return analyzeImageAsync(imageData, prompt, null);
+    }
+
+    /**
+     * 分析图片（异步，指定模型）
+     *
+     * @param imageData 图片数据（Base64编码）
+     * @param prompt    提示词
+     * @param model     模型名称（null时使用默认模型）
+     * @return 分析结果的Future
+     */
+    public CompletableFuture<String> analyzeImageAsync(String imageData, String prompt, String model) {
+        return CompletableFuture.supplyAsync(() -> analyzeImage(imageData, prompt, model));
     }
 
     /**
@@ -117,12 +142,12 @@ public class VisionService {
     /**
      * 调用视觉API
      */
-    private String callVisionAPI(String imageData, String prompt) {
+    private String callVisionAPI(String imageData, String prompt, String model) {
         try {
-            logger.debug("调用视觉API, 模型: {}", config.getModel());
+            logger.debug("调用视觉API, 模型: {}", model);
 
             // 构建请求JSON
-            VisionRequest request = new VisionRequest(config.getModel(), imageData, prompt);
+            VisionRequest request = new VisionRequest(model, imageData, prompt);
             String requestJson = objectMapper.writeValueAsString(request);
 
             // 构建HTTP请求

@@ -761,3 +761,77 @@ body {
 .chat-container::-webkit-scrollbar-thumb:hover {
     background: #555;
 }
+
+/* 会话列表样式 */
+.session-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.session-item {
+    padding: 15px;
+    border: 1px solid #e9ecef;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    transition: all 0.3s ease;
+    background: #fafafa;
+}
+
+.session-item:hover {
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+}
+
+.session-preview {
+    font-size: 0.95rem;
+    color: #333;
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.session-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: #888;
+    margin-bottom: 10px;
+}
+
+.session-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.empty-hint {
+    text-align: center;
+    color: #999;
+    padding: 30px 0;
+    font-size: 0.95rem;
+}
+
+/* 暗黑模式下的会话列表 */
+[data-theme="dark"] .session-item {
+    background: #1e1e3a;
+    border-color: #3a3a5a;
+}
+
+[data-theme="dark"] .session-preview {
+    color: #e0e0e0;
+}
+
+[data-theme="dark"] .modal-content {
+    background: #1a1a2e;
+}
+
+[data-theme="dark"] .setting-group label {
+    color: #e0e0e0;
+}
+
+[data-theme="dark"] .setting-group select,
+[data-theme="dark"] .setting-group input[type="number"] {
+    background: #16213e;
+    border-color: #3a3a5a;
+    color: #e0e0e0;
+}

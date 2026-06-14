@@ -1,18 +1,21 @@
 package com.visionchat.service;
 
+import com.visionchat.entity.ChatRecord;
 import com.visionchat.model.ChatContext;
 import com.visionchat.model.ChatMessage;
+import com.visionchat.repository.ChatRecordRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 对话服务
- * 负责管理对话上下文和生成AI回复
+ * 负责管理对话上下文、生成AI回复、持久化对话记录
  */
 @Service
 public class ChatService {
@@ -27,26 +30,53 @@ public class ChatService {
     private final AsrService asrService;
     private final TtsService ttsService;
     private final ChatAIService chatAIService;
+    private final ChatRecordRepository chatRecordRepository;
 
-    public ChatService(VisionService visionService, AsrService asrService, TtsService ttsService, ChatAIService chatAIService) {
+    public ChatService(VisionService visionService, AsrService asrService, TtsService ttsService,
+                       ChatAIService chatAIService, ChatRecordRepository chatRecordRepository) {
         this.visionService = visionService;
         this.asrService = asrService;
         this.ttsService = ttsService;
         this.chatAIService = chatAIService;
+        this.chatRecordRepository = chatRecordRepository;
     }
 
     /**
-     * 获取或创建对话上下文
+     * 获取或创建对话上下文（从DB加载历史）
      */
     public ChatContext getOrCreateContext(String sessionId) {
-        return contexts.computeIfAbsent(sessionId, ChatContext::create);
+        return contexts.computeIfAbsent(sessionId, id -> {
+            ChatContext ctx = ChatContext.create(id);
+            // 从数据库加载历史消息
+            try {
+                List<ChatRecord> records = chatRecordRepository.findBySessionIdOrderByTimestampAsc(id);
+                for (ChatRecord record : records) {
+                    ChatMessage msg = ChatMessage.builder()
+                            .type(ChatMessage.MessageType.valueOf(
+                                    record.getMessageType() != null ? record.getMessageType() : "TEXT"))
+                            .content(record.getContent())
+                            .sender("USER".equals(record.getRole()) ? "user" :
+                                    "AI".equals(record.getRole()) ? "ai" : "system")
+                            .timestamp(record.getTimestamp())
+                            .status(ChatMessage.MessageStatus.SENT)
+                            .build();
+                    ctx.addMessage(msg);
+                }
+                if (!records.isEmpty()) {
+                    logger.info("从数据库加载了 {} 条历史消息, sessionId={}", records.size(), id);
+                }
+            } catch (Exception e) {
+                logger.error("从数据库加载历史消息失败, sessionId={}", id, e);
+            }
+            return ctx;
+        });
     }
 
     /**
      * 处理文本消息并生成回复
      */
-    public ChatMessage processTextMessage(String sessionId, String userMessage) {
-        logger.info("处理文本消息: sessionId={}, message={}", sessionId, userMessage);
+    public ChatMessage processTextMessage(String sessionId, String userMessage, String model) {
+        logger.info("处理文本消息: sessionId={}, message={}, model={}", sessionId, userMessage, model);
 
         // 获取对话上下文
         ChatContext context = getOrCreateContext(sessionId);
@@ -54,15 +84,17 @@ public class ChatService {
         // 添加用户消息到历史
         ChatMessage userMsg = ChatMessage.createTextMessage(userMessage, "user");
         context.addMessage(userMsg);
+        saveToDb(sessionId, userMsg, model);
 
         // 生成AI回复
-        String replyText = generateReply(context, userMessage);
+        String replyText = generateReply(context, userMessage, model);
 
         // 创建回复消息
         ChatMessage reply = ChatMessage.createTextMessage(replyText, "ai");
 
         // 添加回复到历史
         context.addMessage(reply);
+        saveToDb(sessionId, reply, model);
 
         return reply;
     }
@@ -70,9 +102,9 @@ public class ChatService {
     /**
      * 处理图片消息并生成回复
      */
-    public ChatMessage processImageMessage(String sessionId, String imageData) {
-        logger.info("处理图片消息: sessionId={}, imageSize={}", sessionId,
-                imageData != null ? imageData.length() : 0);
+    public ChatMessage processImageMessage(String sessionId, String imageData, String model) {
+        logger.info("处理图片消息: sessionId={}, imageSize={}, model={}", sessionId,
+                imageData != null ? imageData.length() : 0, model);
 
         // 获取对话上下文
         ChatContext context = getOrCreateContext(sessionId);
@@ -80,7 +112,7 @@ public class ChatService {
         // 分析图片
         String analysisResult = null;
         if (visionService.isAvailable()) {
-            analysisResult = visionService.analyzeImage(imageData, "请详细描述这张图片的内容");
+            analysisResult = visionService.analyzeImage(imageData, "请详细描述这张图片的内容", model);
         }
 
         // 生成回复
@@ -96,6 +128,7 @@ public class ChatService {
 
         // 添加回复到历史
         context.addMessage(reply);
+        saveToDb(sessionId, reply, model);
 
         return reply;
     }
@@ -103,9 +136,9 @@ public class ChatService {
     /**
      * 处理音频消息并生成回复
      */
-    public ChatMessage processAudioMessage(String sessionId, String audioData) {
-        logger.info("处理音频消息: sessionId={}, audioSize={}", sessionId,
-                audioData != null ? audioData.length() : 0);
+    public ChatMessage processAudioMessage(String sessionId, String audioData, String model) {
+        logger.info("处理音频消息: sessionId={}, audioSize={}, model={}", sessionId,
+                audioData != null ? audioData.length() : 0, model);
 
         // 获取对话上下文
         ChatContext context = getOrCreateContext(sessionId);
@@ -122,9 +155,10 @@ public class ChatService {
             // 将识别的文字作为用户消息处理
             ChatMessage userMsg = ChatMessage.createTextMessage(recognizedText, "user");
             context.addMessage(userMsg);
+            saveToDb(sessionId, userMsg, model);
 
             // 生成回复
-            replyText = generateReply(context, recognizedText);
+            replyText = generateReply(context, recognizedText, model);
         } else {
             replyText = "语音识别服务暂时不可用，请稍后再试。";
         }
@@ -134,6 +168,7 @@ public class ChatService {
 
         // 添加回复到历史
         context.addMessage(reply);
+        saveToDb(sessionId, reply, model);
 
         return reply;
     }
@@ -141,8 +176,8 @@ public class ChatService {
     /**
      * 生成AI回复（带语音）
      */
-    public ChatMessage processTextMessageWithVoice(String sessionId, String userMessage) {
-        logger.info("处理文本消息（带语音）: sessionId={}, message={}", sessionId, userMessage);
+    public ChatMessage processTextMessageWithVoice(String sessionId, String userMessage, String model) {
+        logger.info("处理文本消息（带语音）: sessionId={}, message={}, model={}", sessionId, userMessage, model);
 
         // 获取对话上下文
         ChatContext context = getOrCreateContext(sessionId);
@@ -150,15 +185,17 @@ public class ChatService {
         // 添加用户消息到历史
         ChatMessage userMsg = ChatMessage.createTextMessage(userMessage, "user");
         context.addMessage(userMsg);
+        saveToDb(sessionId, userMsg, model);
 
         // 生成AI回复
-        String replyText = generateReply(context, userMessage);
+        String replyText = generateReply(context, userMessage, model);
 
         // 创建回复消息（先返回文本）
         ChatMessage reply = ChatMessage.createTextMessage(replyText, "ai");
 
         // 添加回复到历史
         context.addMessage(reply);
+        saveToDb(sessionId, reply, model);
 
         // 异步合成语音（不阻塞回复）
         if (ttsService.isAvailable()) {
@@ -182,7 +219,7 @@ public class ChatService {
     /**
      * 生成AI回复
      */
-    private String generateReply(ChatContext context, String userMessage) {
+    private String generateReply(ChatContext context, String userMessage, String model) {
         // 获取对话历史
         List<ChatMessage> history = context.getHistory();
 
@@ -202,7 +239,7 @@ public class ChatService {
         }
 
         // 调用AI服务生成回复
-        String reply = chatAIService.generateReply(messages);
+        String reply = chatAIService.generateReply(messages, model);
 
         if (reply != null && !reply.isEmpty()) {
             return reply;
@@ -238,14 +275,47 @@ public class ChatService {
     }
 
     /**
+     * 保存消息到数据库
+     */
+    private void saveToDb(String sessionId, ChatMessage msg, String model) {
+        try {
+            String role;
+            if ("user".equals(msg.getSender())) {
+                role = "USER";
+            } else if ("ai".equals(msg.getSender())) {
+                role = "AI";
+            } else {
+                role = "SYSTEM";
+            }
+
+            ChatRecord record = ChatRecord.builder()
+                    .sessionId(sessionId)
+                    .role(role)
+                    .content(msg.getContent())
+                    .model(model)
+                    .messageType(msg.getType() != null ? msg.getType().name() : "TEXT")
+                    .timestamp(msg.getTimestamp() != null ? msg.getTimestamp() : LocalDateTime.now())
+                    .build();
+            chatRecordRepository.save(record);
+        } catch (Exception e) {
+            logger.error("保存消息到数据库失败", e);
+        }
+    }
+
+    /**
      * 清空会话历史
      */
     public void clearSession(String sessionId) {
         ChatContext context = contexts.get(sessionId);
         if (context != null) {
             context.clearHistory();
-            logger.info("已清空会话历史: {}", sessionId);
         }
+        try {
+            chatRecordRepository.deleteBySessionId(sessionId);
+        } catch (Exception e) {
+            logger.error("清空数据库会话记录失败: {}", sessionId, e);
+        }
+        logger.info("已清空会话历史: {}", sessionId);
     }
 
     /**
