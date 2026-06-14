@@ -16,6 +16,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -138,76 +139,115 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     }
 
     /**
-     * 处理文本消息
+     * 处理文本消息（异步）
      */
     private void handleTextMessage(WebSocketSession session, ChatMessage message) {
         logger.info("收到文本消息: {}, 模型: {}", message.getContent(), message.getModel());
 
-        // 使用ChatService处理消息（带语音）
-        ChatMessage reply = chatService.processTextMessageWithVoice(session.getId(), message.getContent(), message.getModel());
-        sendMessage(session, reply);
+        // 立即发送"正在思考"提示
+        ChatMessage thinkingMsg = ChatMessage.createSystemMessage("🤔 正在思考中...");
+        sendMessage(session, thinkingMsg);
+
+        // 异步处理AI回复
+        CompletableFuture.supplyAsync(() ->
+                chatService.processTextMessageWithVoice(session.getId(), message.getContent(), message.getModel())
+        ).thenAccept(reply -> {
+            sendMessage(session, reply);
+            // 异步合成语音
+            if (ttsService.isAvailable() && reply.getContent() != null) {
+                ttsService.synthesizeAsync(reply.getContent())
+                        .thenAccept(audioData -> {
+                            if (audioData != null && !audioData.isEmpty()) {
+                                ChatMessage audioMsg = ChatMessage.createTextMessage("", "ai");
+                                audioMsg.setAudioData(audioData);
+                                sendMessage(session, audioMsg);
+                            }
+                        })
+                        .exceptionally(e -> {
+                            logger.error("语音合成失败", e);
+                            return null;
+                        });
+            }
+        }).exceptionally(e -> {
+            logger.error("文本消息处理失败", e);
+            ChatMessage errorMsg = ChatMessage.createErrorMessage("消息处理失败，请重试");
+            sendMessage(session, errorMsg);
+            return null;
+        });
     }
 
     /**
-     * 处理图片消息
+     * 处理图片消息（异步）
      */
     private void handleImageMessage(WebSocketSession session, ChatMessage message) {
         logger.info("收到图片消息, 大小: {} bytes, 模型: {}",
                 message.getImageData() != null ? message.getImageData().length() : 0, message.getModel());
 
-        // 使用ChatService处理图片
-        ChatMessage reply = chatService.processImageMessage(session.getId(), message.getImageData(), message.getModel());
+        // 立即发送"正在分析"提示
+        sendMessage(session, ChatMessage.createSystemMessage("📸 正在分析图片..."));
 
-        // 先发送文本回复（不阻塞）
-        sendMessage(session, reply);
-
-        // 异步合成语音，完成后单独发送
-        if (ttsService.isAvailable() && reply.getContent() != null) {
-            ttsService.synthesizeAsync(reply.getContent())
-                    .thenAccept(audioData -> {
-                        if (audioData != null && !audioData.isEmpty()) {
-                            ChatMessage audioMsg = ChatMessage.createTextMessage("", "ai");
-                            audioMsg.setAudioData(audioData);
-                            sendMessage(session, audioMsg);
-                            logger.info("图片回复语音合成完成");
-                        }
-                    })
-                    .exceptionally(e -> {
-                        logger.error("图片回复语音合成失败", e);
-                        return null;
-                    });
-        }
+        // 异步处理
+        CompletableFuture.supplyAsync(() ->
+                chatService.processImageMessage(session.getId(), message.getImageData(), message.getModel())
+        ).thenAccept(reply -> {
+            sendMessage(session, reply);
+            // 异步合成语音
+            if (ttsService.isAvailable() && reply.getContent() != null) {
+                ttsService.synthesizeAsync(reply.getContent())
+                        .thenAccept(audioData -> {
+                            if (audioData != null && !audioData.isEmpty()) {
+                                ChatMessage audioMsg = ChatMessage.createTextMessage("", "ai");
+                                audioMsg.setAudioData(audioData);
+                                sendMessage(session, audioMsg);
+                            }
+                        })
+                        .exceptionally(e -> {
+                            logger.error("图片语音合成失败", e);
+                            return null;
+                        });
+            }
+        }).exceptionally(e -> {
+            logger.error("图片处理失败", e);
+            sendMessage(session, ChatMessage.createErrorMessage("图片处理失败，请重试"));
+            return null;
+        });
     }
 
     /**
-     * 处理音频消息
+     * 处理音频消息（异步）
      */
     private void handleAudioMessage(WebSocketSession session, ChatMessage message) {
         logger.info("收到音频消息, 大小: {} bytes, 模型: {}",
                 message.getAudioData() != null ? message.getAudioData().length() : 0, message.getModel());
 
-        // 使用ChatService处理音频
-        ChatMessage reply = chatService.processAudioMessage(session.getId(), message.getAudioData(), message.getModel());
+        // 立即发送"正在识别"提示
+        sendMessage(session, ChatMessage.createSystemMessage("🎤 正在识别语音..."));
 
-        // 先发送文本回复（不阻塞）
-        sendMessage(session, reply);
-
-        // 异步合成语音，完成后单独发送
-        if (ttsService.isAvailable() && reply.getContent() != null) {
-            ttsService.synthesizeAsync(reply.getContent())
-                    .thenAccept(audioData -> {
-                        if (audioData != null && !audioData.isEmpty()) {
-                            ChatMessage audioMsg = ChatMessage.createTextMessage("", "ai");
-                            audioMsg.setAudioData(audioData);
-                            sendMessage(session, audioMsg);
-                            logger.info("音频回复语音合成完成");
-                        }
-                    })
-                    .exceptionally(e -> {
-                        logger.error("音频回复语音合成失败", e);
-                        return null;
-                    });
-        }
+        // 异步处理
+        CompletableFuture.supplyAsync(() ->
+                chatService.processAudioMessage(session.getId(), message.getAudioData(), message.getModel())
+        ).thenAccept(reply -> {
+            sendMessage(session, reply);
+            // 异步合成语音
+            if (ttsService.isAvailable() && reply.getContent() != null) {
+                ttsService.synthesizeAsync(reply.getContent())
+                        .thenAccept(audioData -> {
+                            if (audioData != null && !audioData.isEmpty()) {
+                                ChatMessage audioMsg = ChatMessage.createTextMessage("", "ai");
+                                audioMsg.setAudioData(audioData);
+                                sendMessage(session, audioMsg);
+                            }
+                        })
+                        .exceptionally(e -> {
+                            logger.error("音频语音合成失败", e);
+                            return null;
+                        });
+            }
+        }).exceptionally(e -> {
+            logger.error("音频处理失败", e);
+            sendMessage(session, ChatMessage.createErrorMessage("语音处理失败，请重试"));
+            return null;
+        });
     }
 
     /**

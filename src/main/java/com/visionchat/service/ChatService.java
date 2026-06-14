@@ -175,10 +175,10 @@ public class ChatService {
     }
 
     /**
-     * 生成AI回复（带语音）
+     * 生成AI回复（TTS由调用方异步处理）
      */
     public ChatMessage processTextMessageWithVoice(String sessionId, String userMessage, String model) {
-        logger.info("处理文本消息（带语音）: sessionId={}, message={}, model={}", sessionId, userMessage, model);
+        logger.info("处理文本消息: sessionId={}, message={}, model={}", sessionId, userMessage, model);
 
         // 获取对话上下文
         ChatContext context = getOrCreateContext(sessionId);
@@ -191,28 +191,12 @@ public class ChatService {
         // 生成AI回复
         String replyText = generateReply(context, userMessage, model);
 
-        // 创建回复消息（先返回文本）
+        // 创建回复消息
         ChatMessage reply = ChatMessage.createTextMessage(replyText, "ai");
 
         // 添加回复到历史
         context.addMessage(reply);
         saveToDb(sessionId, reply, model);
-
-        // 异步合成语音（不阻塞回复）
-        if (ttsService.isAvailable()) {
-            ttsService.synthesizeAsync(replyText)
-                    .thenAccept(audioData -> {
-                        if (audioData != null && !audioData.isEmpty()) {
-                            reply.setAudioData(audioData);
-                            // 这里可以发送语音消息给客户端
-                            logger.info("语音合成完成，大小: {} bytes", audioData.length());
-                        }
-                    })
-                    .exceptionally(e -> {
-                        logger.error("语音合成失败", e);
-                        return null;
-                    });
-        }
 
         return reply;
     }
@@ -239,17 +223,17 @@ public class ChatService {
             messages.add(new ChatAIService.ChatMessage(role, msg.getContent()));
         }
 
-        // 异步调用AI服务，设置15秒超时
+        // 同步调用AI服务，设置8秒超时
         try {
             CompletableFuture<String> future = CompletableFuture.supplyAsync(
                     () -> chatAIService.generateReply(messages, model));
-            String reply = future.get(15, TimeUnit.SECONDS);
+            String reply = future.get(8, TimeUnit.SECONDS);
 
             if (reply != null && !reply.isEmpty()) {
                 return reply;
             }
         } catch (TimeoutException e) {
-            logger.warn("AI回复超时(15秒)，使用备用回复");
+            logger.warn("AI回复超时(8秒)，使用备用回复");
         } catch (Exception e) {
             logger.error("AI回复异常", e);
         }
