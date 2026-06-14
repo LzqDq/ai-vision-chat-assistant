@@ -1,6 +1,7 @@
 package com.visionchat.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.visionchat.model.ChatMessage;
 import com.visionchat.optimizer.CostOptimizer;
 import com.visionchat.service.AsrService;
@@ -27,7 +28,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(ChatWebSocketHandler.class);
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule());
     private final ChatService chatService;
     private final AsrService asrService;
     private final VisionService visionService;
