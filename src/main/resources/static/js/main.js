@@ -349,12 +349,9 @@ async function startRecording() {
             (data) => {
                 console.log('收到音频数据:', data.size, 'bytes');
             },
-            // 停止回调
+            // 停止回调（仅记录，实际音频发送由stopRecording控制）
             async (audioBlob) => {
                 console.log('录音完成, 大小:', Math.round(audioBlob.size / 1024), 'KB');
-                if (!useBrowserSpeech) {
-                    flushAudioBatch();
-                }
             }
         );
 
@@ -407,11 +404,11 @@ async function startRecording() {
  */
 function stopRecording() {
     if (isRecording) {
+        // 先获取语音识别结果（在清理前）
+        const recognizedText = audioProcessor.stopSpeechRecognition();
+
         audioProcessor.stopRecording();
         isRecording = false;
-
-        // 获取浏览器语音识别结果
-        const recognizedText = audioProcessor.stopSpeechRecognition();
 
         // 停止VAD检测
         stopVADDetection();
@@ -445,6 +442,10 @@ function stopRecording() {
             }
             showToast('语音识别成功', 'success');
         } else {
+            // 没有浏览器语音识别，尝试发送音频到服务器
+            if (!useBrowserSpeech) {
+                flushAudioBatch();
+            }
             showToast('录音已停止（未识别到文字）', 'info');
         }
 
