@@ -62,8 +62,8 @@ cost:
 
 # WebSocket配置
 websocket:
-  max-text-message-size: 65536
-  max-binary-message-size: 65536
+  max-text-message-size: 524288
+  max-binary-message-size: 524288
 
 logging:
   level:

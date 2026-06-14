@@ -120,8 +120,11 @@ public class ChatService {
         String replyText;
         if (analysisResult != null && !analysisResult.isEmpty()) {
             replyText = "我看到了这张图片：" + analysisResult;
+        } else if (!visionService.isAvailable()) {
+            replyText = "图片分析服务未配置，请检查 VISION_API_KEY 环境变量。";
         } else {
-            replyText = "图片分析服务暂时不可用，请稍后再试。";
+            String errDetail = visionService.getLastError();
+            replyText = "图片分析失败：" + (errDetail != null ? errDetail : "未知错误");
         }
 
         // 创建回复消息

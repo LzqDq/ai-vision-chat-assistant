@@ -24,6 +24,7 @@ public class VisionService {
     private final VisionConfig config;
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private volatile String lastError = null;
 
     public VisionService(VisionConfig config) {
         this.config = config;
@@ -33,6 +34,13 @@ public class VisionService {
                 .writeTimeout(10, TimeUnit.SECONDS)
                 .build();
         this.objectMapper = new ObjectMapper();
+    }
+
+    /**
+     * 获取最后一次错误信息
+     */
+    public String getLastError() {
+        return lastError;
     }
 
     /**
@@ -56,12 +64,14 @@ public class VisionService {
      */
     public String analyzeImage(String imageData, String prompt, String model) {
         if (!config.isEnabled()) {
-            logger.warn("视觉服务未启用");
+            lastError = "视觉服务未启用";
+            logger.warn(lastError);
             return null;
         }
 
         if (imageData == null || imageData.isEmpty()) {
-            logger.warn("图片数据为空");
+            lastError = "图片数据为空";
+            logger.warn(lastError);
             return null;
         }
 
@@ -79,7 +89,8 @@ public class VisionService {
             return result;
 
         } catch (Exception e) {
-            logger.error("图片分析失败", e);
+            lastError = "图片分析异常: " + e.getMessage();
+            logger.error(lastError, e);
             return null;
         }
     }
@@ -161,7 +172,8 @@ public class VisionService {
             // 发送请求
             try (Response response = httpClient.newCall(httpRequest).execute()) {
                 if (!response.isSuccessful()) {
-                    logger.error("视觉API请求失败: {}", response.code());
+                    lastError = "视觉API HTTP " + response.code();
+                    logger.error(lastError);
                     return null;
                 }
 
@@ -170,7 +182,16 @@ public class VisionService {
 
                 // 检查响应状态
                 if (jsonResponse.has("error_code")) {
-                    logger.error("视觉API错误: {}", jsonResponse.get("error_message").asText());
+                    lastError = "视觉API错误: " + jsonResponse.get("error_message").asText();
+                    logger.error(lastError);
+                    return null;
+                }
+
+                // 检查 DashScope 格式错误
+                if (jsonResponse.has("code")) {
+                    lastError = "DashScope错误: " + jsonResponse.get("code").asText() + " - " +
+                            (jsonResponse.has("message") ? jsonResponse.get("message").asText() : "无详情");
+                    logger.error(lastError);
                     return null;
                 }
 
@@ -182,17 +203,21 @@ public class VisionService {
                         if (firstChoice.has("message") && firstChoice.get("message").has("content")) {
                             String result = firstChoice.get("message").get("content").asText();
                             logger.info("视觉分析成功");
+                            lastError = null;
                             return result;
                         }
                     }
                 }
 
-                logger.error("视觉API响应格式错误");
+                // 记录原始响应用于调试
+                lastError = "视觉API响应格式异常: " + responseBody.substring(0, Math.min(200, responseBody.length()));
+                logger.error(lastError);
                 return null;
             }
 
         } catch (IOException e) {
-            logger.error("视觉API调用失败", e);
+            lastError = "视觉API调用失败: " + e.getMessage();
+            logger.error(lastError, e);
             return null;
         }
     }
