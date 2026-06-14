@@ -222,14 +222,32 @@ class AudioProcessor {
             return false;
         }
 
-        this.speechRecognition = new SpeechRecognition();
-        this.speechRecognition.lang = 'zh-CN';
-        this.speechRecognition.interimResults = true;
-        this.speechRecognition.continuous = true;
-        this.speechRecognition.maxAlternatives = 1;
+        this._speechOnResult = onResult;
+        this._speechOnFinalText = onFinalText;
+        this._speechOnError = onError;
+        this._shouldRestart = true;  // 是否应自动重启识别
         this.transcribedText = '';
 
-        this.speechRecognition.onresult = (event) => {
+        this._startOneRecognition();
+        console.log('浏览器语音识别已启动');
+        return true;
+    }
+
+    /**
+     * 启动单次语音识别（continuous=false，自动重启）
+     */
+    _startOneRecognition() {
+        if (!this._shouldRestart) return;
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const rec = new SpeechRecognition();
+        rec.lang = 'zh-CN';
+        rec.interimResults = true;
+        rec.continuous = false;  // 单次识别更可靠
+        rec.maxAlternatives = 1;
+        this.speechRecognition = rec;
+
+        rec.onresult = (event) => {
             let interim = '';
             let final = '';
             for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -242,40 +260,46 @@ class AudioProcessor {
             }
             if (final) {
                 this.transcribedText += final;
-                console.log('语音识别(最终):', final);
+                console.log('识别:', final);
             }
-            if (onResult) {
-                onResult(this.transcribedText + interim, !!final);
+            if (this._speechOnResult) {
+                this._speechOnResult(this.transcribedText + interim, !!final);
             }
         };
 
-        this.speechRecognition.onerror = (event) => {
-            console.error('语音识别错误:', event.error);
-            if (event.error === 'no-speech') {
-                // 没有检测到语音，不算错误
+        rec.onerror = (event) => {
+            console.log('识别事件:', event.error);
+            // no-speech / aborted 不算错误，静默处理
+            if (event.error === 'no-speech' || event.error === 'aborted') {
                 return;
             }
-            if (onError) onError(event.error);
-        };
-
-        this.speechRecognition.onend = () => {
-            console.log('语音识别结束, 最终文本:', this.transcribedText);
-            // 通知外部：识别完成
-            if (onFinalText && this.transcribedText.trim()) {
-                onFinalText(this.transcribedText.trim());
+            if (this._speechOnError) {
+                this._speechOnError(event.error);
             }
-            this.speechRecognition = null;
         };
 
-        this.speechRecognition.start();
-        console.log('浏览器语音识别已启动');
-        return true;
+        rec.onend = () => {
+            // 自动重启（只要还在录音中）
+            if (this._shouldRestart) {
+                setTimeout(() => this._startOneRecognition(), 200);
+            } else {
+                // 最终停止：发送识别文本
+                console.log('语音识别结束, 最终文本:', this.transcribedText);
+                if (this._speechOnFinalText && this.transcribedText.trim()) {
+                    this._speechOnFinalText(this.transcribedText.trim());
+                }
+                this.speechRecognition = null;
+            }
+        };
+
+        rec.start();
     }
 
     /**
-     * 停止语音识别
+     * 停止语音识别（发送最终结果）
      */
     stopSpeechRecognition() {
+        this._shouldRestart = false;
         if (this.speechRecognition) {
             this.speechRecognition.stop();
         }
