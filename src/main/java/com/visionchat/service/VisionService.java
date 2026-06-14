@@ -151,13 +151,13 @@ public class VisionService {
     }
 
     /**
-     * 调用视觉API
+     * 调用视觉API (DashScope 原生格式)
      */
     private String callVisionAPI(String imageData, String prompt, String model) {
         try {
             logger.debug("调用视觉API, 模型: {}", model);
 
-            // 构建请求JSON
+            // 构建请求JSON (DashScope 多模态格式)
             VisionRequest request = new VisionRequest(model, imageData, prompt);
             String requestJson = objectMapper.writeValueAsString(request);
 
@@ -172,7 +172,8 @@ public class VisionService {
             // 发送请求
             try (Response response = httpClient.newCall(httpRequest).execute()) {
                 if (!response.isSuccessful()) {
-                    lastError = "视觉API HTTP " + response.code();
+                    String respBody = response.body() != null ? response.body().string() : "";
+                    lastError = "视觉API HTTP " + response.code() + " - " + respBody.substring(0, Math.min(300, respBody.length()));
                     logger.error(lastError);
                     return null;
                 }
@@ -180,14 +181,7 @@ public class VisionService {
                 String responseBody = response.body().string();
                 JsonNode jsonResponse = objectMapper.readTree(responseBody);
 
-                // 检查响应状态
-                if (jsonResponse.has("error_code")) {
-                    lastError = "视觉API错误: " + jsonResponse.get("error_message").asText();
-                    logger.error(lastError);
-                    return null;
-                }
-
-                // 检查 DashScope 格式错误
+                // 检查 DashScope 错误 (code + message 格式)
                 if (jsonResponse.has("code")) {
                     lastError = "DashScope错误: " + jsonResponse.get("code").asText() + " - " +
                             (jsonResponse.has("message") ? jsonResponse.get("message").asText() : "无详情");
@@ -195,22 +189,39 @@ public class VisionService {
                     return null;
                 }
 
-                // 获取分析结果
-                if (jsonResponse.has("choices") && jsonResponse.get("choices").isArray()) {
-                    JsonNode choices = jsonResponse.get("choices");
-                    if (choices.size() > 0) {
-                        JsonNode firstChoice = choices.get(0);
-                        if (firstChoice.has("message") && firstChoice.get("message").has("content")) {
-                            String result = firstChoice.get("message").get("content").asText();
-                            logger.info("视觉分析成功");
-                            lastError = null;
-                            return result;
+                // 解析 DashScope 多模态响应: output.choices[0].message.content[0].text
+                if (jsonResponse.has("output")) {
+                    JsonNode output = jsonResponse.get("output");
+                    if (output.has("choices") && output.get("choices").isArray()) {
+                        JsonNode choices = output.get("choices");
+                        if (choices.size() > 0) {
+                            JsonNode firstChoice = choices.get(0);
+                            if (firstChoice.has("message")) {
+                                JsonNode message = firstChoice.get("message");
+                                // content 可能是字符串或数组
+                                JsonNode content = message.get("content");
+                                if (content != null) {
+                                    String result;
+                                    if (content.isArray() && content.size() > 0) {
+                                        // 数组格式: [{"text": "..."}]
+                                        JsonNode firstContent = content.get(0);
+                                        result = firstContent.has("text") ? firstContent.get("text").asText() : firstContent.asText();
+                                    } else {
+                                        result = content.asText();
+                                    }
+                                    if (result != null && !result.isEmpty()) {
+                                        logger.info("视觉分析成功");
+                                        lastError = null;
+                                        return result;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
                 // 记录原始响应用于调试
-                lastError = "视觉API响应格式异常: " + responseBody.substring(0, Math.min(200, responseBody.length()));
+                lastError = "视觉API响应格式异常: " + responseBody.substring(0, Math.min(300, responseBody.length()));
                 logger.error(lastError);
                 return null;
             }
@@ -223,59 +234,42 @@ public class VisionService {
     }
 
     /**
-     * 视觉API请求对象
+     * 视觉API请求对象 (DashScope 多模态原生格式)
      */
     private static class VisionRequest {
         public final String model;
-        public final Object[] messages;
+        public final Input input;
 
         public VisionRequest(String model, String imageData, String prompt) {
             this.model = model;
-            this.messages = new Object[]{
+            this.input = new Input(new Object[]{
                     new Message("user", new Object[]{
-                            new ImageContent("image_url", new ImageUrl("data:image/jpeg;base64," + imageData)),
-                            new TextContent("text", prompt)
+                            new ImageBlock("data:image/jpeg;base64," + imageData),
+                            new TextBlock(prompt)
                     })
-            };
+            });
         }
+    }
+
+    private static class Input {
+        public final Object[] messages;
+        public Input(Object[] messages) { this.messages = messages; }
     }
 
     private static class Message {
         public final String role;
         public final Object[] content;
-
-        public Message(String role, Object[] content) {
-            this.role = role;
-            this.content = content;
-        }
+        public Message(String role, Object[] content) { this.role = role; this.content = content; }
     }
 
-    private static class ImageContent {
-        public final String type;
-        public final ImageUrl image_url;
-
-        public ImageContent(String type, ImageUrl image_url) {
-            this.type = type;
-            this.image_url = image_url;
-        }
+    private static class ImageBlock {
+        public final String image;
+        public ImageBlock(String image) { this.image = image; }
     }
 
-    private static class ImageUrl {
-        public final String url;
-
-        public ImageUrl(String url) {
-            this.url = url;
-        }
-    }
-
-    private static class TextContent {
-        public final String type;
+    private static class TextBlock {
         public final String text;
-
-        public TextContent(String type, String text) {
-            this.type = type;
-            this.text = text;
-        }
+        public TextBlock(String text) { this.text = text; }
     }
 
     /**
