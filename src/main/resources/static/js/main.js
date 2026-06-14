@@ -7,6 +7,8 @@ let videoStream = null;
 let audioProcessor = null;
 let isRecording = false;
 let vadTimer = null;
+let audioBatchTimer = null;
+const AUDIO_BATCH_INTERVAL = 3000; // 音频批量发送间隔（毫秒）
 let ws = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -230,8 +232,15 @@ function captureFrame() {
     const ctx = canvasElement.getContext('2d');
     ctx.drawImage(videoElement, 0, 0);
 
-    // 获取图片数据（压缩质量60%）
-    const imageData = canvasElement.toDataURL('image/jpeg', 0.6);
+    // 获取原始图片数据
+    const quality = (parseInt(document.getElementById('imageQuality').value) || 60) / 100;
+    const maxWidth = parseInt(document.getElementById('maxImageWidth')?.value) || 800;
+    let imageData = canvasElement.toDataURL('image/jpeg', quality);
+
+    // 本地预处理：缩放+压缩
+    const originalSize = Math.round(imageData.length / 1024);
+    imageData = preprocessImageSync(imageData, maxWidth, quality);
+    const processedSize = Math.round(imageData.length / 1024);
 
     // 添加到对话
     addMessage('user', '📸 已拍照，请识别图片内容');
@@ -239,9 +248,43 @@ function captureFrame() {
     // 发送到服务器
     sendImageMessage(imageData);
 
-    console.log('捕获帧大小:', Math.round(imageData.length / 1024), 'KB');
+    const savedPercent = originalSize > 0 ? Math.round((1 - processedSize / originalSize) * 100) : 0;
+    console.log(`图片预处理: ${originalSize}KB → ${processedSize}KB (节省${savedPercent}%)`);
 
     showToast('图片已发送', 'success');
+}
+
+/**
+ * 本地图像预处理（同步版，用于已有的base64数据）
+ * @param {string} imageData - 原始base64图片数据
+ * @param {number} maxWidth - 最大宽度（像素）
+ * @param {number} quality - JPEG压缩质量 (0-1)
+ * @returns {string} 处理后的base64图片数据
+ */
+function preprocessImageSync(imageData, maxWidth, quality) {
+    maxWidth = maxWidth || 800;
+    quality = quality || 0.6;
+
+    const img = new Image();
+    img.src = imageData;
+
+    // 计算缩放后的尺寸
+    let width = img.width;
+    let height = img.height;
+
+    if (width > maxWidth) {
+        height = Math.round(height * maxWidth / width);
+        width = maxWidth;
+    }
+
+    // 使用离屏canvas进行缩放和压缩
+    const offscreen = document.createElement('canvas');
+    offscreen.width = width;
+    offscreen.height = height;
+    const ctx = offscreen.getContext('2d');
+    ctx.drawImage(img, 0, 0, width, height);
+
+    return offscreen.toDataURL('image/jpeg', quality);
 }
 
 /**
@@ -265,7 +308,14 @@ function handleImageUpload(event) {
 
     const reader = new FileReader();
     reader.onload = (e) => {
-        const imageData = e.target.result;
+        let imageData = e.target.result;
+
+        // 本地预处理：缩放+压缩
+        const quality = (parseInt(document.getElementById('imageQuality').value) || 60) / 100;
+        const maxWidth = parseInt(document.getElementById('maxImageWidth')?.value) || 800;
+        const originalSize = Math.round(imageData.length / 1024);
+        imageData = preprocessImageSync(imageData, maxWidth, quality);
+        const processedSize = Math.round(imageData.length / 1024);
 
         // 添加到对话
         addMessage('user', '📁 已上传图片，请识别图片内容');
@@ -273,7 +323,8 @@ function handleImageUpload(event) {
         // 发送到服务器
         sendImageMessage(imageData);
 
-        console.log('上传图片大小:', Math.round(imageData.length / 1024), 'KB');
+        const savedPercent = originalSize > 0 ? Math.round((1 - processedSize / originalSize) * 100) : 0;
+        console.log(`图片预处理: ${originalSize}KB → ${processedSize}KB (节省${savedPercent}%)`);
 
         showToast('图片已发送', 'success');
     };
@@ -315,14 +366,8 @@ async function startRecording() {
             async (audioBlob) => {
                 console.log('录音完成, 大小:', Math.round(audioBlob.size / 1024), 'KB');
 
-                // 转换为Base64
-                const base64 = await audioProcessor.blobToBase64(audioBlob);
-
-                // 添加到对话
-                addMessage('user', '🎤 已录音，正在识别...');
-
-                // 发送到服务器
-                sendAudioMessage(base64);
+                // 发送剩余的音频片段
+                flushAudioBatch();
             }
         );
 
@@ -340,6 +385,9 @@ async function startRecording() {
 
             // 启动VAD检测
             startVADDetection();
+
+            // 启动音频批量发送定时器
+            startAudioBatchTimer();
         } else {
             showToast('无法开始录音', 'error');
         }
@@ -366,6 +414,9 @@ function stopRecording() {
         // 停止VAD检测
         stopVADDetection();
 
+        // 停止音频批量发送
+        stopAudioBatchTimer();
+
         // 更新UI
         startRecordBtn.textContent = '🎤 按住说话';
         startRecordBtn.classList.remove('recording');
@@ -375,6 +426,42 @@ function stopRecording() {
 
         showToast('录音已停止', 'info');
     }
+}
+
+/**
+ * 启动音频批量发送定时器
+ */
+function startAudioBatchTimer() {
+    stopAudioBatchTimer();
+    audioBatchTimer = setInterval(() => {
+        flushAudioBatch();
+    }, AUDIO_BATCH_INTERVAL);
+}
+
+/**
+ * 停止音频批量发送定时器
+ */
+function stopAudioBatchTimer() {
+    if (audioBatchTimer) {
+        clearInterval(audioBatchTimer);
+        audioBatchTimer = null;
+    }
+}
+
+/**
+ * 发送当前已收集的音频片段
+ */
+async function flushAudioBatch() {
+    if (!audioProcessor || !isRecording) return;
+
+    const audioBlob = audioProcessor.getAndClearChunks();
+    if (!audioBlob || audioBlob.size === 0) return;
+
+    console.log('批量发送音频片段, 大小:', Math.round(audioBlob.size / 1024), 'KB');
+
+    const base64 = await audioProcessor.blobToBase64(audioBlob);
+    addMessage('user', '🎤 音频片段已发送...');
+    sendAudioMessage(base64);
 }
 
 /**
@@ -823,6 +910,7 @@ function saveSettings() {
         aiModel: document.getElementById('aiModel').value,
         videoQuality: document.getElementById('videoQuality').value,
         imageQuality: document.getElementById('imageQuality').value,
+        maxImageWidth: document.getElementById('maxImageWidth').value,
         frameInterval: document.getElementById('frameInterval').value,
         enableVAD: document.getElementById('enableVAD').checked,
         enableAutoCapture: document.getElementById('enableAutoCapture').checked
@@ -844,6 +932,7 @@ function loadSettings() {
         document.getElementById('videoQuality').value = settings.videoQuality || 'medium';
         document.getElementById('imageQuality').value = settings.imageQuality || 60;
         document.getElementById('imageQualityValue').textContent = (settings.imageQuality || 60) + '%';
+        document.getElementById('maxImageWidth').value = settings.maxImageWidth || 800;
         document.getElementById('frameInterval').value = settings.frameInterval || 2;
         document.getElementById('enableVAD').checked = settings.enableVAD !== false;
         document.getElementById('enableAutoCapture').checked = settings.enableAutoCapture || false;

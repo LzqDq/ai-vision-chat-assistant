@@ -273,6 +273,20 @@ class AudioProcessor {
         const audioBlob = new Blob(this.audioChunks, { type: mimeType });
         return audioBlob;
     }
+
+    /**
+     * 获取并清空已收集的音频块（用于批量发送）
+     */
+    getAndClearChunks() {
+        if (this.audioChunks.length === 0) {
+            return null;
+        }
+
+        const mimeType = this.getSupportedMimeType();
+        const chunks = this.audioChunks.splice(0);  // 取出并清空
+        const audioBlob = new Blob(chunks, { type: mimeType });
+        return audioBlob;
+    }
 }
 
 // 导出音频处理器
