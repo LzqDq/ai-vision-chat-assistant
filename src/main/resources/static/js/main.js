@@ -9,6 +9,7 @@ let isRecording = false;
 let vadTimer = null;
 let audioBatchTimer = null;
 const AUDIO_BATCH_INTERVAL = 3000; // 音频批量发送间隔（毫秒）
+let useBrowserSpeech = false; // 是否使用浏览器语音识别
 let ws = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -351,7 +352,9 @@ async function startRecording() {
             // 停止回调
             async (audioBlob) => {
                 console.log('录音完成, 大小:', Math.round(audioBlob.size / 1024), 'KB');
-                flushAudioBatch();
+                if (!useBrowserSpeech) {
+                    flushAudioBatch();
+                }
             }
         );
 
@@ -366,25 +369,24 @@ async function startRecording() {
             micStatus.classList.add('active');
 
             // 启动浏览器语音识别
-            const hasSpeech = audioProcessor.startSpeechRecognition(
+            useBrowserSpeech = audioProcessor.startSpeechRecognition(
                 (text, isFinal) => {
-                    // 实时更新显示的文本
                     micStatus.textContent = text ? '识别: ' + text.substring(0, 20) : '正在听...';
                 },
                 (error) => {
                     console.warn('语音识别不可用:', error);
                     micStatus.textContent = '录音中（无识别）';
+                    useBrowserSpeech = false;
                 }
             );
-            if (!hasSpeech) {
-                showToast('使用服务器语音识别', 'info');
-            }
 
             // 启动VAD检测
             startVADDetection();
 
-            // 启动音频批量发送定时器
-            startAudioBatchTimer();
+            // 只有没用到浏览器语音识别时才发送音频到服务器
+            if (!useBrowserSpeech) {
+                startAudioBatchTimer();
+            }
         } else {
             showToast('无法开始录音', 'error');
         }
@@ -445,6 +447,8 @@ function stopRecording() {
         } else {
             showToast('录音已停止（未识别到文字）', 'info');
         }
+
+        useBrowserSpeech = false;
     }
 }
 
