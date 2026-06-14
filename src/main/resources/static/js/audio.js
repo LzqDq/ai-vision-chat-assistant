@@ -210,11 +210,14 @@ class AudioProcessor {
 
     /**
      * 启动浏览器内置语音识别
+     * onResult: 实时结果回调
+     * onFinalText: 识别完成后回调（传入最终文本）
+     * onError: 错误回调
      */
-    startSpeechRecognition(onResult, onError) {
+    startSpeechRecognition(onResult, onFinalText, onError) {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
-            console.warn('浏览器不支持语音识别，将使用服务器ASR');
+            console.warn('浏览器不支持语音识别');
             if (onError) onError('浏览器不支持语音识别');
             return false;
         }
@@ -248,11 +251,20 @@ class AudioProcessor {
 
         this.speechRecognition.onerror = (event) => {
             console.error('语音识别错误:', event.error);
+            if (event.error === 'no-speech') {
+                // 没有检测到语音，不算错误
+                return;
+            }
             if (onError) onError(event.error);
         };
 
         this.speechRecognition.onend = () => {
             console.log('语音识别结束, 最终文本:', this.transcribedText);
+            // 通知外部：识别完成
+            if (onFinalText && this.transcribedText.trim()) {
+                onFinalText(this.transcribedText.trim());
+            }
+            this.speechRecognition = null;
         };
 
         this.speechRecognition.start();
@@ -261,38 +273,12 @@ class AudioProcessor {
     }
 
     /**
-     * 停止语音识别并返回最终文本（等待onend触发）
+     * 停止语音识别
      */
-    async stopSpeechRecognition() {
-        return new Promise((resolve) => {
-            if (!this.speechRecognition) {
-                resolve('');
-                return;
-            }
-
-            // 超时保护：最多等2秒
-            const timeout = setTimeout(() => {
-                const text = this.transcribedText;
-                this.transcribedText = '';
-                this.speechRecognition = null;
-                resolve(text);
-            }, 2000);
-
-            const origOnEnd = this.speechRecognition.onend;
-            this.speechRecognition.onend = () => {
-                clearTimeout(timeout);
-                if (origOnEnd) {
-                    try { origOnEnd(); } catch(e) {}
-                }
-                const text = this.transcribedText;
-                this.transcribedText = '';
-                this.speechRecognition = null;
-                console.log('语音识别完成，返回文本:', text);
-                resolve(text);
-            };
-
+    stopSpeechRecognition() {
+        if (this.speechRecognition) {
             this.speechRecognition.stop();
-        });
+        }
     }
 
     /**

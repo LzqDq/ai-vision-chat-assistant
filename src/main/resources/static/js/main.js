@@ -367,9 +367,26 @@ async function startRecording() {
 
             // 启动浏览器语音识别
             useBrowserSpeech = audioProcessor.startSpeechRecognition(
+                // 实时结果回调
                 (text, isFinal) => {
                     micStatus.textContent = text ? '识别: ' + text.substring(0, 20) : '正在听...';
                 },
+                // 识别完成回调：自动发送文字消息
+                (finalText) => {
+                    console.log('语音识别结果，发送消息:', finalText);
+                    addMessage('user', '🎤 ' + finalText);
+                    const chatModelEl = document.getElementById('chatModel');
+                    const selectedModel = chatModelEl ? chatModelEl.value : 'qwen-turbo';
+                    sendWebSocketMessage({
+                        type: 'TEXT',
+                        content: finalText,
+                        sender: 'user',
+                        model: selectedModel
+                    });
+                    showTypingIndicator();
+                    showToast('语音识别成功', 'success');
+                },
+                // 错误回调
                 (error) => {
                     console.warn('语音识别不可用:', error);
                     micStatus.textContent = '录音中（无识别）';
@@ -402,10 +419,10 @@ async function startRecording() {
 /**
  * 停止录音
  */
-async function stopRecording() {
+function stopRecording() {
     if (isRecording) {
-        // 等待语音识别完成并获取结果
-        const recognizedText = await audioProcessor.stopSpeechRecognition();
+        // 停止语音识别（onend回调会自动发送识别文本）
+        audioProcessor.stopSpeechRecognition();
 
         audioProcessor.stopRecording();
         isRecording = false;
@@ -423,30 +440,9 @@ async function stopRecording() {
         micStatus.textContent = '未录音';
         micStatus.classList.remove('active');
 
-        // 如果有识别文本，直接当成文字消息发送
-        if (recognizedText && recognizedText.trim()) {
-            console.log('语音识别结果:', recognizedText);
-            addMessage('user', '🎤 ' + recognizedText);
-
-            const chatModelEl = document.getElementById('chatModel');
-            const selectedModel = chatModelEl ? chatModelEl.value : 'qwen-turbo';
-            const message = {
-                type: 'TEXT',
-                content: recognizedText.trim(),
-                sender: 'user',
-                model: selectedModel
-            };
-
-            if (sendWebSocketMessage(message)) {
-                showTypingIndicator();
-            }
-            showToast('语音识别成功', 'success');
-        } else {
-            // 没有浏览器语音识别，尝试发送音频到服务器
-            if (!useBrowserSpeech) {
-                flushAudioBatch();
-            }
-            showToast('录音已停止（未识别到文字）', 'info');
+        if (!useBrowserSpeech) {
+            flushAudioBatch();
+            showToast('录音已停止', 'info');
         }
 
         useBrowserSpeech = false;
