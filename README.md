@@ -109,6 +109,7 @@ ai-vision-chat-assistant/
 - [x] PR10: 完善UI与用户体验
 - [x] PR11: 编写设计文档
 
+## bilibili视频地址：https://t.bilibili.com/1213824299785256984?share_source=pc_native
 ## 许可证
 
 MIT License
