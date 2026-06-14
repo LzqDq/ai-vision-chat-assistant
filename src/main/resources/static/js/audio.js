@@ -261,16 +261,38 @@ class AudioProcessor {
     }
 
     /**
-     * 停止语音识别并返回最终文本
+     * 停止语音识别并返回最终文本（等待onend触发）
      */
-    stopSpeechRecognition() {
-        if (this.speechRecognition) {
+    async stopSpeechRecognition() {
+        return new Promise((resolve) => {
+            if (!this.speechRecognition) {
+                resolve('');
+                return;
+            }
+
+            // 超时保护：最多等2秒
+            const timeout = setTimeout(() => {
+                const text = this.transcribedText;
+                this.transcribedText = '';
+                this.speechRecognition = null;
+                resolve(text);
+            }, 2000);
+
+            const origOnEnd = this.speechRecognition.onend;
+            this.speechRecognition.onend = () => {
+                clearTimeout(timeout);
+                if (origOnEnd) {
+                    try { origOnEnd(); } catch(e) {}
+                }
+                const text = this.transcribedText;
+                this.transcribedText = '';
+                this.speechRecognition = null;
+                console.log('语音识别完成，返回文本:', text);
+                resolve(text);
+            };
+
             this.speechRecognition.stop();
-            this.speechRecognition = null;
-        }
-        const text = this.transcribedText;
-        this.transcribedText = '';
-        return text;
+        });
     }
 
     /**

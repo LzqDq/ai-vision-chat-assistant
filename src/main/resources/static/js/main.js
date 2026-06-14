@@ -402,10 +402,10 @@ async function startRecording() {
 /**
  * 停止录音
  */
-function stopRecording() {
+async function stopRecording() {
     if (isRecording) {
-        // 先获取语音识别结果（在清理前）
-        const recognizedText = audioProcessor.stopSpeechRecognition();
+        // 等待语音识别完成并获取结果
+        const recognizedText = await audioProcessor.stopSpeechRecognition();
 
         audioProcessor.stopRecording();
         isRecording = false;
