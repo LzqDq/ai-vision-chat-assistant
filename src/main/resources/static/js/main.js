@@ -842,8 +842,9 @@ function sendMessage() {
     // 添加到对话区域
     addMessage('user', content);
 
-    // 获取选择的模型
-    const selectedModel = document.getElementById('aiModel').value;
+    // 文本消息使用对话模型
+    const chatModelEl = document.getElementById('chatModel');
+    const selectedModel = chatModelEl ? chatModelEl.value : 'qwen-turbo';
 
     // 发送到服务器
     const message = {
@@ -909,8 +910,10 @@ function hideModal(modalId) {
  * 保存设置
  */
 function saveSettings() {
+    const chatModelEl = document.getElementById('chatModel');
     const settings = {
         aiModel: document.getElementById('aiModel').value,
+        chatModel: chatModelEl ? chatModelEl.value : 'qwen-turbo',
         videoQuality: document.getElementById('videoQuality').value,
         imageQuality: document.getElementById('imageQuality').value,
         maxImageWidth: document.getElementById('maxImageWidth').value,
@@ -932,6 +935,10 @@ function loadSettings() {
     if (saved) {
         const settings = JSON.parse(saved);
         document.getElementById('aiModel').value = settings.aiModel || 'qwen-vl-plus';
+        const chatModelEl = document.getElementById('chatModel');
+        if (chatModelEl) {
+            chatModelEl.value = settings.chatModel || 'qwen-turbo';
+        }
         document.getElementById('videoQuality').value = settings.videoQuality || 'medium';
         document.getElementById('imageQuality').value = settings.imageQuality || 60;
         document.getElementById('imageQualityValue').textContent = (settings.imageQuality || 60) + '%';

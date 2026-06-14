@@ -195,11 +195,20 @@
             </div>
             <div class="modal-body">
                 <div class="setting-group">
-                    <label>AI视觉模型：</label>
+                    <label>AI视觉模型（图片识别）：</label>
                     <select id="aiModel">
                         <option value="qwen-vl-plus">qwen-vl-plus（标准）</option>
                         <option value="qwen-vl-max">qwen-vl-max（增强）</option>
                         <option value="qwen-vl-max-latest">qwen-vl-max-latest（最新）</option>
+                    </select>
+                </div>
+
+                <div class="setting-group">
+                    <label>AI对话模型（文字聊天）：</label>
+                    <select id="chatModel">
+                        <option value="qwen-turbo">qwen-turbo（快速）</option>
+                        <option value="qwen-plus">qwen-plus（均衡）</option>
+                        <option value="qwen-max">qwen-max（最强）</option>
                     </select>
                 </div>
 

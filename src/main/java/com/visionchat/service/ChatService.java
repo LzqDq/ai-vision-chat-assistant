@@ -223,17 +223,23 @@ public class ChatService {
             messages.add(new ChatAIService.ChatMessage(role, msg.getContent()));
         }
 
-        // 同步调用AI服务，设置8秒超时
+        // 同步调用AI服务，设置25秒超时
         try {
             CompletableFuture<String> future = CompletableFuture.supplyAsync(
                     () -> chatAIService.generateReply(messages, model));
-            String reply = future.get(8, TimeUnit.SECONDS);
+            String reply = future.get(25, TimeUnit.SECONDS);
 
             if (reply != null && !reply.isEmpty()) {
                 return reply;
             }
+
+            // AI服务返回null（API Key未配置或API调用失败）
+            if (reply == null) {
+                logger.error("AI服务返回null - 请检查 VISION_API_KEY 环境变量是否已正确设置");
+                return "⚠️ AI服务未配置。\n\n请确保服务器环境变量 VISION_API_KEY 已设置为有效的阿里云 DashScope API Key。";
+            }
         } catch (TimeoutException e) {
-            logger.warn("AI回复超时(8秒)，使用备用回复");
+            logger.warn("AI回复超时(25秒)，使用备用回复");
         } catch (Exception e) {
             logger.error("AI回复异常", e);
         }

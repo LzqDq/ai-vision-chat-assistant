@@ -59,8 +59,9 @@ public class ChatAIService {
         }
 
         try {
-            String effectiveModel = (model != null && !model.isEmpty()) ? model : "qwen-turbo";
-            logger.info("调用AI对话服务, 消息数: {}, 模型: {}", messages.size(), effectiveModel);
+            // 自动映射视觉模型名到文本模型名（防止前端传错模型）
+            String effectiveModel = mapToTextModel(model);
+            logger.info("调用AI对话服务, 消息数: {}, 原始模型: {}, 实际模型: {}", messages.size(), model, effectiveModel);
 
             // 构建请求JSON
             ChatRequest request = new ChatRequest(effectiveModel, messages);
@@ -105,6 +106,25 @@ public class ChatAIService {
             logger.error("AI对话API调用失败", e);
             return null;
         }
+    }
+
+    /**
+     * 将视觉模型名映射为文本模型名
+     * 防止前端将 qwen-vl-* 等视觉模型传给文本生成API
+     */
+    private String mapToTextModel(String model) {
+        if (model == null || model.isEmpty()) {
+            return "qwen-turbo";
+        }
+        // 视觉模型 → 文本模型映射
+        if (model.startsWith("qwen-vl-")) {
+            return switch (model) {
+                case "qwen-vl-max", "qwen-vl-max-latest" -> "qwen-max";
+                default -> "qwen-plus"; // qwen-vl-plus → qwen-plus
+            };
+        }
+        // 已经是文本模型，直接使用
+        return model;
     }
 
     /**
