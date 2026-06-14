@@ -158,15 +158,25 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         // 使用ChatService处理图片
         ChatMessage reply = chatService.processImageMessage(session.getId(), message.getImageData(), message.getModel());
 
-        // 如果TTS可用，添加语音
-        if (ttsService.isAvailable() && reply.getContent() != null) {
-            String audioData = ttsService.synthesize(reply.getContent());
-            if (audioData != null) {
-                reply.setAudioData(audioData);
-            }
-        }
-
+        // 先发送文本回复（不阻塞）
         sendMessage(session, reply);
+
+        // 异步合成语音，完成后单独发送
+        if (ttsService.isAvailable() && reply.getContent() != null) {
+            ttsService.synthesizeAsync(reply.getContent())
+                    .thenAccept(audioData -> {
+                        if (audioData != null && !audioData.isEmpty()) {
+                            ChatMessage audioMsg = ChatMessage.createTextMessage("", "ai");
+                            audioMsg.setAudioData(audioData);
+                            sendMessage(session, audioMsg);
+                            logger.info("图片回复语音合成完成");
+                        }
+                    })
+                    .exceptionally(e -> {
+                        logger.error("图片回复语音合成失败", e);
+                        return null;
+                    });
+        }
     }
 
     /**
@@ -179,15 +189,25 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         // 使用ChatService处理音频
         ChatMessage reply = chatService.processAudioMessage(session.getId(), message.getAudioData(), message.getModel());
 
-        // 如果TTS可用，添加语音
-        if (ttsService.isAvailable() && reply.getContent() != null) {
-            String audioData = ttsService.synthesize(reply.getContent());
-            if (audioData != null) {
-                reply.setAudioData(audioData);
-            }
-        }
-
+        // 先发送文本回复（不阻塞）
         sendMessage(session, reply);
+
+        // 异步合成语音，完成后单独发送
+        if (ttsService.isAvailable() && reply.getContent() != null) {
+            ttsService.synthesizeAsync(reply.getContent())
+                    .thenAccept(audioData -> {
+                        if (audioData != null && !audioData.isEmpty()) {
+                            ChatMessage audioMsg = ChatMessage.createTextMessage("", "ai");
+                            audioMsg.setAudioData(audioData);
+                            sendMessage(session, audioMsg);
+                            logger.info("音频回复语音合成完成");
+                        }
+                    })
+                    .exceptionally(e -> {
+                        logger.error("音频回复语音合成失败", e);
+                        return null;
+                    });
+        }
     }
 
     /**

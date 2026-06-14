@@ -718,7 +718,10 @@ function handleWebSocketMessage(message) {
     switch (message.type) {
         case 'TEXT':
             hideTypingIndicator();
-            addMessage('ai', message.content);
+            // 如果有内容，显示文本消息
+            if (message.content) {
+                addMessage('ai', message.content);
+            }
             // 如果有音频数据，播放语音
             if (message.audioData) {
                 playAudio(message.audioData);

@@ -11,7 +11,8 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 对话服务
@@ -217,7 +218,7 @@ public class ChatService {
     }
 
     /**
-     * 生成AI回复
+     * 生成AI回复（带超时机制）
      */
     private String generateReply(ChatContext context, String userMessage, String model) {
         // 获取对话历史
@@ -238,14 +239,22 @@ public class ChatService {
             messages.add(new ChatAIService.ChatMessage(role, msg.getContent()));
         }
 
-        // 调用AI服务生成回复
-        String reply = chatAIService.generateReply(messages, model);
+        // 异步调用AI服务，设置15秒超时
+        try {
+            CompletableFuture<String> future = CompletableFuture.supplyAsync(
+                    () -> chatAIService.generateReply(messages, model));
+            String reply = future.get(15, TimeUnit.SECONDS);
 
-        if (reply != null && !reply.isEmpty()) {
-            return reply;
+            if (reply != null && !reply.isEmpty()) {
+                return reply;
+            }
+        } catch (TimeoutException e) {
+            logger.warn("AI回复超时(15秒)，使用备用回复");
+        } catch (Exception e) {
+            logger.error("AI回复异常", e);
         }
 
-        // 如果AI服务不可用，使用简单的规则回复
+        // 如果AI服务不可用或超时，使用简单的规则回复
         return generateSimpleReply(userMessage);
     }
 
