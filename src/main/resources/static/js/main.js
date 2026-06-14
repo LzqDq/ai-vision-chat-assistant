@@ -346,14 +346,11 @@ async function startRecording() {
         const success = await audioProcessor.startRecording(
             // 数据回调
             (data) => {
-                // 实时音频数据可用于流式ASR
                 console.log('收到音频数据:', data.size, 'bytes');
             },
             // 停止回调
             async (audioBlob) => {
                 console.log('录音完成, 大小:', Math.round(audioBlob.size / 1024), 'KB');
-
-                // 发送剩余的音频片段
                 flushAudioBatch();
             }
         );
@@ -365,10 +362,23 @@ async function startRecording() {
             startRecordBtn.textContent = '⏹️ 停止录音';
             startRecordBtn.classList.add('recording');
             stopRecordBtn.disabled = false;
-            micStatus.textContent = '录音中';
+            micStatus.textContent = '正在听...';
             micStatus.classList.add('active');
 
-            showToast('开始录音', 'info');
+            // 启动浏览器语音识别
+            const hasSpeech = audioProcessor.startSpeechRecognition(
+                (text, isFinal) => {
+                    // 实时更新显示的文本
+                    micStatus.textContent = text ? '识别: ' + text.substring(0, 20) : '正在听...';
+                },
+                (error) => {
+                    console.warn('语音识别不可用:', error);
+                    micStatus.textContent = '录音中（无识别）';
+                }
+            );
+            if (!hasSpeech) {
+                showToast('使用服务器语音识别', 'info');
+            }
 
             // 启动VAD检测
             startVADDetection();
@@ -398,6 +408,9 @@ function stopRecording() {
         audioProcessor.stopRecording();
         isRecording = false;
 
+        // 获取浏览器语音识别结果
+        const recognizedText = audioProcessor.stopSpeechRecognition();
+
         // 停止VAD检测
         stopVADDetection();
 
@@ -411,7 +424,27 @@ function stopRecording() {
         micStatus.textContent = '未录音';
         micStatus.classList.remove('active');
 
-        showToast('录音已停止', 'info');
+        // 如果有识别文本，直接当成文字消息发送
+        if (recognizedText && recognizedText.trim()) {
+            console.log('语音识别结果:', recognizedText);
+            addMessage('user', '🎤 ' + recognizedText);
+
+            const chatModelEl = document.getElementById('chatModel');
+            const selectedModel = chatModelEl ? chatModelEl.value : 'qwen-turbo';
+            const message = {
+                type: 'TEXT',
+                content: recognizedText.trim(),
+                sender: 'user',
+                model: selectedModel
+            };
+
+            if (sendWebSocketMessage(message)) {
+                showTypingIndicator();
+            }
+            showToast('语音识别成功', 'success');
+        } else {
+            showToast('录音已停止（未识别到文字）', 'info');
+        }
     }
 }
 

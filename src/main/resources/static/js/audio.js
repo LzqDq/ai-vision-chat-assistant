@@ -14,6 +14,9 @@ class AudioProcessor {
         this.audioContext = null;
         this.analyser = null;
         this.dataArray = null;
+        this.speechRecognition = null;
+        this.transcribedText = '';
+        this.onSpeechResult = null;
     }
 
     /**
@@ -206,6 +209,71 @@ class AudioProcessor {
     }
 
     /**
+     * 启动浏览器内置语音识别
+     */
+    startSpeechRecognition(onResult, onError) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            console.warn('浏览器不支持语音识别，将使用服务器ASR');
+            if (onError) onError('浏览器不支持语音识别');
+            return false;
+        }
+
+        this.speechRecognition = new SpeechRecognition();
+        this.speechRecognition.lang = 'zh-CN';
+        this.speechRecognition.interimResults = true;
+        this.speechRecognition.continuous = true;
+        this.speechRecognition.maxAlternatives = 1;
+        this.transcribedText = '';
+
+        this.speechRecognition.onresult = (event) => {
+            let interim = '';
+            let final = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    final += transcript;
+                } else {
+                    interim += transcript;
+                }
+            }
+            if (final) {
+                this.transcribedText += final;
+                console.log('语音识别(最终):', final);
+            }
+            if (onResult) {
+                onResult(this.transcribedText + interim, !!final);
+            }
+        };
+
+        this.speechRecognition.onerror = (event) => {
+            console.error('语音识别错误:', event.error);
+            if (onError) onError(event.error);
+        };
+
+        this.speechRecognition.onend = () => {
+            console.log('语音识别结束, 最终文本:', this.transcribedText);
+        };
+
+        this.speechRecognition.start();
+        console.log('浏览器语音识别已启动');
+        return true;
+    }
+
+    /**
+     * 停止语音识别并返回最终文本
+     */
+    stopSpeechRecognition() {
+        if (this.speechRecognition) {
+            this.speechRecognition.stop();
+            this.speechRecognition = null;
+        }
+        const text = this.transcribedText;
+        this.transcribedText = '';
+        return text;
+    }
+
+    /**
      * 清理资源
      */
     cleanup() {
@@ -217,10 +285,15 @@ class AudioProcessor {
             this.audioContext.close();
             this.audioContext = null;
         }
+        if (this.speechRecognition) {
+            try { this.speechRecognition.stop(); } catch(e) {}
+            this.speechRecognition = null;
+        }
         this.mediaRecorder = null;
         this.analyser = null;
         this.dataArray = null;
         this.audioChunks = [];
+        this.transcribedText = '';
     }
 
     /**
